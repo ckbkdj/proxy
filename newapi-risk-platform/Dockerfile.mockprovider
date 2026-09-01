@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1.7
+
+FROM golang:1.23.6-bookworm AS build
+WORKDIR /src
+COPY go.mod ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY . .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o /out/mockprovider ./cmd/mockprovider
+
+FROM gcr.io/distroless/base-debian12:nonroot
+COPY --from=build /out/mockprovider /usr/local/bin/mockprovider
+USER nonroot:nonroot
+EXPOSE 18081
+ENTRYPOINT ["/usr/local/bin/mockprovider"]
