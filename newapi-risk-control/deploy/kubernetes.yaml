@@ -1,0 +1,304 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: riskgate
+  labels:
+    app.kubernetes.io/name: riskgate
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: riskgate
+  namespace: riskgate
+automountServiceAccountToken: false
+---
+# Fail-safe placeholders: the application refuses to start in production until
+# every placeholder is replaced with an independent strong secret.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: riskgate-secrets
+  namespace: riskgate
+type: Opaque
+stringData:
+  DATABASE_URL: "postgres://riskgate:REPLACE_ME@postgres.example.internal:5432/riskgate?sslmode=require"
+  REDIS_URL: "rediss://:REPLACE_ME@redis.example.internal:6379/0"
+  ADMIN_JWT_SECRET: "REPLACE_WITH_AT_LEAST_32_RANDOM_BYTES"
+  TRACE_HMAC_SECRET: "REPLACE_WITH_DIFFERENT_32_RANDOM_BYTES"
+  PROMPT_HASH_SECRET: "REPLACE_WITH_ANOTHER_32_RANDOM_BYTES"
+  MASTER_ENCRYPTION_KEY: "REPLACE_WITH_BASE64_ENCODED_32_BYTE_KEY"
+  BOOTSTRAP_ADMIN_USERNAME: "admin"
+  BOOTSTRAP_ADMIN_PASSWORD: "REPLACE_WITH_AT_LEAST_32_RANDOM_BYTES"
+  BOOTSTRAP_ADMIN_ROLE: "admin"
+  KAFKA_BROKERS: ""
+  KAFKA_SASL_MECHANISM: "scram-sha-512"
+  KAFKA_SASL_USERNAME: ""
+  KAFKA_SASL_PASSWORD: ""
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: riskgate-config
+  namespace: riskgate
+data:
+  APP_ENV: "production"
+  LISTEN_ADDR: ":8080"
+  PUBLIC_BASE_URL: "https://risk.example.com"
+  MIGRATIONS_PATH: "/app/migrations/001_init.sql"
+  DB_MAX_CONNS: "80"
+  DB_MIN_CONNS: "10"
+  DB_CONNECT_TIMEOUT: "5s"
+  REDIS_REQUIRED: "true"
+  REDIS_PREFIX: "riskgate"
+  DEFAULT_RETENTION_DAYS: "7"
+  MAX_REQUEST_BYTES: "8388608"
+  MAX_RESPONSE_BYTES: "33554432"
+  MAX_SSE_FRAME_BYTES: "1048576"
+  STREAM_GATE_BYTES: "65536"
+  STREAM_GATE_TIMEOUT: "1200ms"
+  UPSTREAM_HEADER_TIMEOUT: "60s"
+  UPSTREAM_IDLE_TIMEOUT: "120s"
+  AUDIT_DEFAULT_TIMEOUT: "8s"
+  AUDIT_MAX_TEXT_BYTES: "131072"
+  AUDIT_CACHE_TTL: "10m"
+  TRACE_QUEUE_SIZE: "32768"
+  TRACE_WORKERS: "8"
+  OUTBOX_WORKERS: "4"
+  FAIL_CLOSED: "true"
+  ALLOW_PRIVATE_UPSTREAMS: "false"
+  TRUST_PROXY_HEADERS: "true"
+  KAFKA_TOPIC: "riskgate.audit.events.v1"
+  KAFKA_CLIENT_ID: "riskgate"
+  KAFKA_TLS: "true"
+  KAFKA_RETENTION_HOURS: "720"
+  KAFKA_AUTO_CONFIGURE_TOPIC: "false"
+  LOG_LEVEL: "info"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: riskgate
+  namespace: riskgate
+  labels:
+    app.kubernetes.io/name: riskgate
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: riskgate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: riskgate
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: riskgate
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: riskgate
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: riskgate
+      containers:
+        - name: riskgate
+          # Replace with an immutable digest in production.
+          image: ghcr.io/ckbkdj/newapi-risk-control:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: riskgate-config
+            - secretRef:
+                name: riskgate-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "256Mi"
+            limits:
+              cpu: "4"
+              memory: "2Gi"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2
+            timeoutSeconds: 1
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 2
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: riskgate
+  namespace: riskgate
+  labels:
+    app.kubernetes.io/name: riskgate
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: riskgate
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: riskgate
+  namespace: riskgate
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: riskgate
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: riskgate
+  namespace: riskgate
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: riskgate
+  minReplicas: 3
+  maxReplicas: 30
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+        - type: Pods
+          value: 4
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 60
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: riskgate
+  namespace: riskgate
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: riskgate
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Managed PostgreSQL, Redis and Kafka destinations should be narrowed to
+    # their actual CIDRs by the deployment team.
+    - ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 6380
+        - protocol: TCP
+          port: 9092
+        - protocol: TCP
+          port: 9093
+    # Public HTTPS model channels. Private ranges are excluded by default.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 100.64.0.0/10
+              - 127.0.0.0/8
+              - 169.254.0.0/16
+              - 172.16.0.0/12
+              - 192.0.0.0/24
+              - 192.168.0.0/16
+              - 198.18.0.0/15
+              - 224.0.0.0/4
+              - 240.0.0.0/4
+      ports:
+        - protocol: TCP
+          port: 443
