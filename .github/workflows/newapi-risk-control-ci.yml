@@ -1,0 +1,76 @@
+name: New API Risk Control CI
+
+on:
+  pull_request:
+    paths:
+      - 'newapi-risk-control/**'
+      - '.github/workflows/newapi-risk-control-ci.yml'
+  push:
+    branches:
+      - master
+      - 'feat/newapi-risk-control-*'
+    paths:
+      - 'newapi-risk-control/**'
+      - '.github/workflows/newapi-risk-control-ci.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: riskgate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: newapi-risk-control
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache: true
+          cache-dependency-path: newapi-risk-control/go.mod
+
+      - name: Resolve modules
+        run: go mod tidy
+
+      - name: Normalize Go formatting
+        run: gofmt -w $(find . -name '*.go' -type f)
+
+      - name: Unit and race tests
+        run: go test -race -count=1 ./...
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Build binary
+        run: CGO_ENABLED=0 go build -trimpath -o /tmp/riskgate ./cmd/riskgate
+
+      - name: Validate OpenAPI YAML
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import yaml
+          path = pathlib.Path('docs/openapi.yaml')
+          document = yaml.safe_load(path.read_text())
+          assert document['openapi'].startswith('3.1.')
+          assert '/gateway/{slug}/{upstreamPath}' in document['paths']
+          assert '555' in document['paths']['/gateway/{slug}/{upstreamPath}']['post']['responses']
+          print('OpenAPI structure is valid')
+          PY
+
+      - name: Prepare Compose environment
+        run: cp .env.example .env
+
+      - name: Validate Compose
+        run: docker compose config --quiet
+
+      - name: Build production image
+        run: docker build --pull --tag riskgate:test .
