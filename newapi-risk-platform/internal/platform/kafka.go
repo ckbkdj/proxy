@@ -273,9 +273,9 @@ func (s *EventSink) ApplyRetention(ctx context.Context, days int) error {
 				ResourceName: s.topic,
 				Configs: []kafka.IncrementalAlterConfigsRequestConfig{
 					{
-						Name:      "retention.ms",
-						Value:     strconv.FormatInt(int64(days)*24*60*60*1000, 10),
-						Operation: 0,
+						Name:            "retention.ms",
+						Value:           strconv.FormatInt(int64(days)*24*60*60*1000, 10),
+						ConfigOperation: kafka.ConfigOperationSet,
 					},
 				},
 			},
