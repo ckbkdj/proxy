@@ -1,0 +1,70 @@
+name: New API Risk Platform E2E
+
+on:
+  push:
+    branches:
+      - feat/newapi-risk-platform-release-20260901
+    paths:
+      - newapi-risk-platform/**
+      - .github/workflows/newapi-risk-platform-e2e.yml
+  pull_request:
+    paths:
+      - newapi-risk-platform/**
+      - .github/workflows/newapi-risk-platform-e2e.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: newapi-risk-platform-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  end-to-end:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: newapi-risk-platform
+    env:
+      POSTGRES_PASSWORD: e2e-postgres-password-with-sufficient-length
+      MASTER_KEY_B64: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      JWT_SECRET: e2e-jwt-secret-0123456789abcdef0123456789abcdef
+      BOOTSTRAP_ADMIN_PASSWORD: e2e-admin-password-with-sufficient-length
+      BOOTSTRAP_TRACKING_KEY_ID: newapi-default
+      BOOTSTRAP_TRACKING_SECRET: e2e-tracking-secret-with-sufficient-randomness
+      BIND_ADDRESS: 127.0.0.1
+      HTTP_PORT: "18080"
+      APP_ENV: production
+      KAFKA_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start test stack
+        run: docker compose -f docker-compose.yml -f docker-compose.test.yml up -d --build
+      - name: Wait for service readiness
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 90); do
+            if curl --fail --silent http://127.0.0.1:18080/readyz >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f docker-compose.yml -f docker-compose.test.yml ps
+          docker compose -f docker-compose.yml -f docker-compose.test.yml logs --no-color
+          exit 1
+      - name: Run complete risk gateway checks
+        env:
+          BASE_URL: http://127.0.0.1:18080
+          ADMIN_USERNAME: admin
+          ADMIN_PASSWORD: e2e-admin-password-with-sufficient-length
+          TRACKING_KEY_ID: newapi-default
+          TRACKING_SECRET: e2e-tracking-secret-with-sufficient-randomness
+          ROUTE_KEY: e2e-route-key-with-sufficient-randomness
+        run: bash scripts/e2e.sh
+      - name: Collect logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml -f docker-compose.test.yml logs --no-color
+      - name: Stop test stack
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.test.yml down -v --remove-orphans
