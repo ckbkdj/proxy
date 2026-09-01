@@ -1,0 +1,10 @@
+.git
+.github
+.env
+bin
+coverage.out
+*.log
+riskgate-k6-summary.json
+.idea
+.vscode
+.DS_Store
