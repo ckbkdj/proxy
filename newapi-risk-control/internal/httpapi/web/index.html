@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>RiskGate 控制台</title>
+  <link rel="stylesheet" href="/admin/styles.css">
+</head>
+<body>
+  <div id="toast" class="toast" hidden></div>
+  <main id="loginView" class="login-shell">
+    <form id="loginForm" class="login-card">
+      <div class="brand-mark">RG</div>
+      <h1>RiskGate</h1>
+      <p>New API 渠道风控与请求追踪控制台</p>
+      <label>用户名<input name="username" autocomplete="username" required></label>
+      <label>密码<input name="password" type="password" autocomplete="current-password" required></label>
+      <button type="submit">登录</button>
+    </form>
+  </main>
+
+  <div id="appView" class="app-shell" hidden>
+    <aside>
+      <div class="brand"><span>RG</span><strong>RiskGate</strong></div>
+      <nav>
+        <button data-page="overview" class="active">运行概览</button>
+        <button data-page="routes">渠道路由</button>
+        <button data-page="profiles">审计模型</button>
+        <button data-page="rules">Cyber 规则</button>
+        <button data-page="traces">请求追踪</button>
+        <button data-page="storage">存储策略</button>
+        <button data-page="dryrun">审计试跑</button>
+      </nav>
+      <div class="aside-footer"><span id="currentUser"></span><button id="logoutBtn" class="ghost">退出</button></div>
+    </aside>
+    <main class="content">
+      <header><div><h1 id="pageTitle">运行概览</h1><p id="pageSubtitle">服务状态、阻断量与存储积压</p></div><button id="refreshBtn" class="secondary">刷新</button></header>
+
+      <section id="page-overview" class="page active">
+        <div id="metricCards" class="cards"></div>
+        <div class="panel"><h2>组件状态</h2><div id="componentStatus" class="status-grid"></div></div>
+        <div class="panel"><h2>当前存储窗口</h2><div id="overviewStorage"></div></div>
+      </section>
+
+      <section id="page-routes" class="page">
+        <div class="toolbar"><p>New API 的渠道 Base URL 指向网关路由，渠道 Key 填写网关令牌。</p><button id="newRouteBtn">新增路由</button></div>
+        <div class="panel table-wrap"><table><thead><tr><th>名称</th><th>Slug / Provider</th><th>上游</th><th>限流</th><th>审计</th><th>状态</th><th></th></tr></thead><tbody id="routesBody"></tbody></table></div>
+      </section>
+
+      <section id="page-profiles" class="page">
+        <div class="toolbar"><p>默认建议使用低延迟小模型；生产环境采用 closed 策略。</p><button id="newProfileBtn">新增审计模型</button></div>
+        <div class="panel table-wrap"><table><thead><tr><th>名称</th><th>模型</th><th>端点</th><th>阈值</th><th>失败策略</th><th>状态</th><th></th></tr></thead><tbody id="profilesBody"></tbody></table></div>
+      </section>
+
+      <section id="page-rules" class="page">
+        <div class="toolbar"><p>规则使用 Go RE2 正则，优先级高于模型判定；内置规则不可删除。</p><button id="newRuleBtn">新增规则</button></div>
+        <div class="panel table-wrap"><table><thead><tr><th>名称</th><th>分类</th><th>动作/分数</th><th>优先级</th><th>来源</th><th>状态</th><th></th></tr></thead><tbody id="rulesBody"></tbody></table></div>
+      </section>
+
+      <section id="page-traces" class="page">
+        <form id="traceFilter" class="filter-row"><input name="request_id" placeholder="请求 ID"><input name="route" placeholder="路由 Slug"><select name="outcome"><option value="">全部结果</option><option value="allowed">allowed</option><option value="risk_blocked">risk_blocked</option><option value="upstream_error_normalized">upstream_error_normalized</option></select><input name="model" placeholder="模型"><button type="submit">查询</button></form>
+        <div class="panel table-wrap"><table><thead><tr><th>时间 / 请求 ID</th><th>路由 / 模型</th><th>结果</th><th>HTTP</th><th>风险</th><th>延迟</th></tr></thead><tbody id="tracesBody"></tbody></table></div>
+      </section>
+
+      <section id="page-storage" class="page">
+        <form id="storageForm" class="panel form-grid">
+          <label>PostgreSQL 窗口天数<input name="retention_days" type="number" min="1" max="3650" required></label>
+          <label>Redis 补偿 TTL（小时）<input name="redis_buffer_ttl_hours" type="number" min="1" max="8760" required></label>
+          <label>Kafka 保留时长（小时）<input name="kafka_retention_hours" type="number" min="1" max="87600" required></label>
+          <label class="check"><input name="postgres_enabled" type="checkbox"> 保存到 PostgreSQL</label>
+          <label class="check"><input name="redis_buffer_enabled" type="checkbox"> 启用 Redis Stream 故障补偿</label>
+          <label class="check"><input name="kafka_enabled" type="checkbox"> 启用 Kafka 长期事件流</label>
+          <div class="notice">原始 prompt 永不通过页面启用；默认只存密钥化哈希、判定和清洗后的元数据。</div>
+          <button type="submit">保存策略</button>
+        </form>
+      </section>
+
+      <section id="page-dryrun" class="page">
+        <form id="dryRunForm" class="panel form-stack"><label>审计模型<select name="profile_id" id="dryProfile"><option value="">仅规则引擎</option></select></label><label>测试文本<textarea name="text" rows="10" required placeholder="输入待审计的请求文本"></textarea></label><button type="submit">执行审计</button></form>
+        <pre id="dryRunResult" class="panel code">尚未执行</pre>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="routeDialog"><form id="routeForm" method="dialog" class="dialog-form"><header><h2>渠道路由</h2><button value="cancel" class="icon">×</button></header><input name="id" type="hidden"><label>名称<input name="name" required></label><label>Slug<input name="slug" pattern="[a-z0-9][a-z0-9_-]{1,62}" required></label><div class="two"><label>上游类型<select name="upstream_kind"><option>openai</option><option>anthropic</option><option>gemini</option><option>custom</option></select></label><label>审计模型<select name="audit_profile_id"><option value="">仅规则引擎</option></select></label></div><label>上游 Base URL<input name="upstream_base_url" type="url" required></label><label>真实上游 API Key<input name="upstream_api_key" type="password" placeholder="编辑时留空表示不修改"></label><label>网关令牌<input name="client_token" type="password" placeholder="留空自动生成；只显示一次"></label><div class="three"><label>RPS<input name="rate_limit_rps" type="number" min="0.1" step="0.1" value="100"></label><label>Burst<input name="rate_limit_burst" type="number" min="1" value="200"></label><label>最大并发<input name="max_inflight" type="number" min="1" value="1000"></label></div><label>请求超时（ms）<input name="request_timeout_ms" type="number" min="1000" value="300000"></label><div class="two"><label class="check"><input name="enabled" type="checkbox" checked> 启用</label><label class="check"><input name="allow_private_upstream" type="checkbox"> 允许私网端点（还需服务端总开关）</label></div><footer><button value="cancel" class="secondary">取消</button><button id="saveRouteBtn" value="default">保存</button></footer></form></dialog>
+
+  <dialog id="profileDialog"><form id="profileForm" method="dialog" class="dialog-form"><header><h2>审计模型</h2><button value="cancel" class="icon">×</button></header><input name="id" type="hidden"><label>名称<input name="name" required></label><label>OpenAI-compatible 端点<input name="endpoint" type="url" required></label><label>模型<input name="model" required></label><label>API Key<input name="api_key" type="password" placeholder="编辑时留空表示不修改"></label><div class="three"><label>失败策略<select name="fail_mode"><option value="closed">closed</option><option value="open">open</option><option value="shadow">shadow</option></select></label><label>阻断阈值<input name="block_threshold" type="number" min="0" max="1" step="0.01" value="0.72"></label><label>超时（ms）<input name="timeout_ms" type="number" min="100" value="8000"></label></div><div class="two"><label>最大输入字符<input name="max_input_chars" type="number" min="256" value="32000"></label><label>缓存秒数<input name="cache_ttl_seconds" type="number" min="0" value="600"></label></div><label>自定义系统规则<textarea name="system_prompt" rows="5" placeholder="留空使用内置安全分类规则"></textarea></label><label class="check"><input name="enabled" type="checkbox" checked> 启用</label><footer><button value="cancel" class="secondary">取消</button><button value="default">保存</button></footer></form></dialog>
+
+  <dialog id="ruleDialog"><form id="ruleForm" method="dialog" class="dialog-form"><header><h2>Cyber 规则</h2><button value="cancel" class="icon">×</button></header><input name="id" type="hidden"><label>名称<input name="name" required></label><label>分类<input name="category" required></label><label>RE2 正则<textarea name="pattern" rows="5" required></textarea></label><div class="three"><label>动作<select name="action"><option value="block">block</option><option value="review">review</option><option value="allow">allow</option></select></label><label>分数<input name="score" type="number" min="0" max="1" step="0.01" value="1"></label><label>优先级<input name="priority" type="number" value="100"></label></div><label class="check"><input name="enabled" type="checkbox" checked> 启用</label><footer><button value="cancel" class="secondary">取消</button><button value="default">保存</button></footer></form></dialog>
+
+  <script src="/admin/app.js" defer></script>
+</body>
+</html>
