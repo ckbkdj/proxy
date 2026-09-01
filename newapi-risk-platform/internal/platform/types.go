@@ -160,7 +160,9 @@ type TrackingEvent struct {
 	Metadata        map[string]any `json:"metadata"`
 }
 
-type TrackingEnvelope struct { Events []TrackingEvent `json:"events"` }
+type TrackingEnvelope struct {
+	Events []TrackingEvent `json:"events"`
+}
 
 type AdminUser struct {
 	ID           int64     `json:"id"`

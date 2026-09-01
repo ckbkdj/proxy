@@ -48,8 +48,8 @@ func NewAuditEngine(
 	log *slog.Logger,
 ) *AuditEngine {
 	engine := &AuditEngine{
-		store:           store,
-		security:        security,
+		store:    store,
+		security: security,
 		client: &http.Client{
 			Transport: NewSafeTransport(cfg.AllowPrivateUpstreams, cfg.UpstreamTLSMinVersion),
 			Timeout:   30 * time.Second,
@@ -94,7 +94,7 @@ func (e *AuditEngine) ReloadRules(ctx context.Context) error {
 	compiled := make([]compiledRule, 0, len(rules))
 	for _, rule := range rules {
 		item := compiledRule{
-			CyberRule:   rule,
+			CyberRule:    rule,
 			lowerPattern: strings.ToLower(strings.TrimSpace(rule.Pattern)),
 		}
 		switch rule.PatternType {
@@ -217,7 +217,7 @@ func (e *AuditEngine) Audit(ctx context.Context, route Route, body []byte) (resu
 		return result
 	}
 
-	profile, err := e.store.GetAuditProfile(ctx, route.AuditProfileID)
+	profile, err := e.getAuditProfile(ctx, route.AuditProfileID)
 	if err != nil || !profile.Enabled {
 		if route.FailClosed {
 			result.AuditDecision = AuditDecision{
@@ -491,7 +491,7 @@ func ExtractAuditText(body []byte, maxBytes int) string {
 		case string:
 			switch lowerKey {
 			case "content", "text", "input", "prompt", "instructions", "description",
-				"system_instruction", "query", "arguments":
+				"system", "system_instruction", "query", "arguments":
 				appendText(typed)
 			}
 		case []any:

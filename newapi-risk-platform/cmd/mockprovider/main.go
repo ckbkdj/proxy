@@ -74,17 +74,17 @@ func auditHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	classification, _ := json.Marshal(map[string]any{
-		"decision": decision,
-		"risk_code": riskCode,
-		"category": category,
+		"decision":   decision,
+		"risk_code":  riskCode,
+		"category":   category,
 		"confidence": confidence,
-		"reason": reason,
+		"reason":     reason,
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id": "audit-mock",
 		"choices": []any{map[string]any{
 			"message": map[string]any{
-				"role": "assistant",
+				"role":    "assistant",
 				"content": string(classification),
 			},
 		}},
@@ -118,11 +118,11 @@ func providerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"id": "completion-mock",
+		"id":     "completion-mock",
 		"object": "chat.completion",
 		"choices": []any{map[string]any{
-			"index": 0,
-			"message": map[string]any{"role": "assistant", "content": "mock provider success"},
+			"index":         0,
+			"message":       map[string]any{"role": "assistant", "content": "mock provider success"},
 			"finish_reason": "stop",
 		}},
 	})

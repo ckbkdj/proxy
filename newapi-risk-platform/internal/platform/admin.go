@@ -35,16 +35,16 @@ func (s *HTTPService) adminDashboard(w http.ResponseWriter, r *http.Request) {
 
 func (s *HTTPService) adminRuntime(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"environment":               s.cfg.Environment,
-		"postgres_healthy":          s.store.Health(r.Context()) == nil,
-		"redis":                     s.redis.Status(),
-		"kafka_enabled":             s.events.Enabled(),
-		"kafka_queue_depth":         s.events.QueueDepth(),
-		"trace_queue_depth":         s.traces.Depth(),
-		"trace_dropped":             s.traces.Dropped(),
-		"error_http_status":         s.cfg.ErrorHTTPStatus,
-		"allow_private_upstreams":   s.cfg.AllowPrivateUpstreams,
-		"postgres_retention_days":   s.store.GetIntSetting(r.Context(), "retention_days", s.cfg.RetentionDays),
+		"environment":                s.cfg.Environment,
+		"postgres_healthy":           s.store.Health(r.Context()) == nil,
+		"redis":                      s.redis.Status(),
+		"kafka_enabled":              s.events.Enabled(),
+		"kafka_queue_depth":          s.events.QueueDepth(),
+		"trace_queue_depth":          s.traces.Depth(),
+		"trace_dropped":              s.traces.Dropped(),
+		"error_http_status":          s.cfg.ErrorHTTPStatus,
+		"allow_private_upstreams":    s.cfg.AllowPrivateUpstreams,
+		"postgres_retention_days":    s.store.GetIntSetting(r.Context(), "retention_days", s.cfg.RetentionDays),
 		"raw_prompt_storage_enabled": false,
 	})
 }
@@ -171,7 +171,7 @@ func (s *HTTPService) adminListAuditProfiles(w http.ResponseWriter, r *http.Requ
 	views := make([]profileView, 0, len(profiles))
 	for _, profile := range profiles {
 		views = append(views, profileView{
-			AuditProfile:    profile,
+			AuditProfile:     profile,
 			APIKeyConfigured: len(profile.APIKeyCiphertext) > 0,
 		})
 	}
@@ -209,6 +209,7 @@ func (s *HTTPService) adminSaveAuditProfile(w http.ResponseWriter, r *http.Reque
 		writeAPIError(w, http.StatusConflict, "profile_save_failed", "audit profile could not be saved")
 		return
 	}
+	s.audit.InvalidateProfiles()
 	s.auditAdmin(r, "save", "audit_profile", strconv.FormatInt(profile.ID, 10), map[string]any{
 		"name":  profile.Name,
 		"model": profile.Model,
@@ -226,6 +227,7 @@ func (s *HTTPService) adminDeleteAuditProfile(w http.ResponseWriter, r *http.Req
 		writeAPIError(w, http.StatusConflict, "delete_failed", err.Error())
 		return
 	}
+	s.audit.InvalidateProfiles()
 	s.auditAdmin(r, "delete", "audit_profile", strconv.FormatInt(id, 10), nil)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -477,8 +479,8 @@ func (s *HTTPService) adminSaveTrackingClient(w http.ResponseWriter, r *http.Req
 		"rotated_secret":   rotated,
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
-		"client": client,
-		"secret": secretForResponse,
+		"client":        client,
+		"secret":        secretForResponse,
 		"secret_notice": "A new or rotated secret is returned only by this response; store it securely.",
 	})
 }

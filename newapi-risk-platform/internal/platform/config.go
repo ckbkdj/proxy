@@ -29,7 +29,7 @@ type Config struct {
 	KafkaPassword                string
 	KafkaQueueSize               int
 	KafkaTopicPartitions         int
-	KafkaTopicReplicationFactor int
+	KafkaTopicReplicationFactor  int
 	MasterKey                    []byte
 	JWTSecret                    []byte
 	JWTIssuer                    string
@@ -82,7 +82,7 @@ func LoadConfig() (Config, error) {
 		KafkaPassword:                os.Getenv("KAFKA_PASSWORD"),
 		KafkaQueueSize:               envInt("KAFKA_QUEUE_SIZE", 8192),
 		KafkaTopicPartitions:         envInt("KAFKA_TOPIC_PARTITIONS", 12),
-		KafkaTopicReplicationFactor: envInt("KAFKA_TOPIC_REPLICATION_FACTOR", 1),
+		KafkaTopicReplicationFactor:  envInt("KAFKA_TOPIC_REPLICATION_FACTOR", 1),
 		JWTIssuer:                    envString("JWT_ISSUER", "newapi-risk-platform"),
 		JWTTTL:                       envDuration("JWT_TTL", 8*time.Hour),
 		BootstrapAdminUsername:       envString("BOOTSTRAP_ADMIN_USERNAME", "admin"),
@@ -215,36 +215,54 @@ func envString(name, fallback string) string {
 }
 func envInt(name string, fallback int) int {
 	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" { return fallback }
+	if value == "" {
+		return fallback
+	}
 	parsed, err := strconv.Atoi(value)
-	if err != nil { return fallback }
+	if err != nil {
+		return fallback
+	}
 	return parsed
 }
 func envFloat(name string, fallback float64) float64 {
 	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" { return fallback }
+	if value == "" {
+		return fallback
+	}
 	parsed, err := strconv.ParseFloat(value, 64)
-	if err != nil { return fallback }
+	if err != nil {
+		return fallback
+	}
 	return parsed
 }
 func envBool(name string, fallback bool) bool {
 	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" { return fallback }
+	if value == "" {
+		return fallback
+	}
 	parsed, err := strconv.ParseBool(value)
-	if err != nil { return fallback }
+	if err != nil {
+		return fallback
+	}
 	return parsed
 }
 func envDuration(name string, fallback time.Duration) time.Duration {
 	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" { return fallback }
+	if value == "" {
+		return fallback
+	}
 	parsed, err := time.ParseDuration(value)
-	if err != nil { return fallback }
+	if err != nil {
+		return fallback
+	}
 	return parsed
 }
 func splitCSV(value string) []string {
 	var result []string
 	for _, item := range strings.Split(value, ",") {
-		if item = strings.TrimSpace(item); item != "" { result = append(result, item) }
+		if item = strings.TrimSpace(item); item != "" {
+			result = append(result, item)
+		}
 	}
 	return result
 }

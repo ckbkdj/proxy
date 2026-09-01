@@ -414,7 +414,8 @@ func sanitizeMetadata(input map[string]any) map[string]any {
 			result := map[string]any{}
 			for key, child := range typed {
 				lowerKey := strings.ToLower(strings.TrimSpace(key))
-				if _, denied := blocked[lowerKey]; denied || len(key) > 100 {
+				_, denied := blocked[lowerKey]
+				if denied || metadataKeyLooksSensitive(lowerKey) || len(key) > 100 {
 					continue
 				}
 				result[key] = clean(child, depth+1)

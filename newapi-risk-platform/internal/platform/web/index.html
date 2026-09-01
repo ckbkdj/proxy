@@ -45,11 +45,11 @@
       <div class="field"><label for="login-username">用户名</label><input id="login-username" autocomplete="username" required></div>
       <div class="field"><label for="login-password">密码</label><input id="login-password" type="password" autocomplete="current-password" required></div>
       <button class="btn btn-primary btn-block" type="submit">登录</button>
-      <div id="login-error" class="danger-text hidden"></div>
+      <div id="login-error" class="danger-text" hidden></div>
     </form>
   </div>
 
-  <div id="app" class="app hidden">
+  <div id="app" class="app" hidden>
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">R</span><span>风控控制台</span></div>
       <nav class="nav" id="nav">
@@ -69,7 +69,7 @@
         <div class="topbar-actions"><button id="refresh-button" class="btn btn-secondary">刷新</button><button id="logout-button" class="btn btn-secondary">退出</button></div>
       </header>
       <main class="content">
-        <div id="toast" class="toast hidden"></div>
+        <div id="toast" class="toast" hidden></div>
 
         <section id="view-dashboard" class="view">
           <div class="view-head"><div><h2>运行总览</h2><p>最近 24 小时的请求、拦截与基础设施状态。</p></div></div>
@@ -78,7 +78,7 @@
           <div class="grid split"><div class="card"><h3>风险码分布</h3><div id="risk-code-table"></div></div><div class="card"><h3>路由请求量</h3><div id="route-volume-table"></div></div></div>
         </section>
 
-        <section id="view-routes" class="view hidden">
+        <section id="view-routes" class="view" hidden>
           <div class="view-head"><div><h2>渠道路由</h2><p>New API 调用本平台后，由路由决定审计配置、上游渠道和并发限制。</p></div><button id="new-route-button" class="btn btn-primary">新增路由</button></div>
           <div class="grid split">
             <div class="card"><div class="panel-head"><h3>路由列表</h3><span id="route-count" class="badge">0</span></div><div id="routes-table"></div></div>
@@ -105,10 +105,10 @@
           </div>
         </section>
 
-        <section id="view-profiles" class="view hidden">
+        <section id="view-profiles" class="view" hidden>
           <div class="view-head"><div><h2>审计模型</h2><p>配置 OpenAI 兼容的小模型接口。规则未直接决策时调用此模型。</p></div><button id="new-profile-button" class="btn btn-primary">新增模型</button></div>
           <div class="grid split">
-            <div class="grid"><div class="card"><h3>模型配置</h3><div id="profiles-table"></div></div><div class="card"><h3>审计试运行</h3><form id="dry-run-form"><div class="field"><label for="dry-run-profile">模型配置</label><select id="dry-run-profile"><option value="">默认模型</option></select></div><div class="field"><label for="dry-run-text">测试文本</label><textarea id="dry-run-text" required></textarea></div><button class="btn btn-secondary" type="submit">执行审计</button></form><div id="dry-run-result" class="notice hidden"></div></div></div>
+            <div class="grid"><div class="card"><h3>模型配置</h3><div id="profiles-table"></div></div><div class="card"><h3>审计试运行</h3><form id="dry-run-form"><div class="field"><label for="dry-run-profile">模型配置</label><select id="dry-run-profile"><option value="">默认模型</option></select></div><div class="field"><label for="dry-run-text">测试文本</label><textarea id="dry-run-text" required></textarea></div><button class="btn btn-secondary" type="submit">执行审计</button></form><div id="dry-run-result" class="notice" hidden></div></div></div>
             <form id="profile-form" class="form-card">
               <h3 id="profile-form-title">新增模型</h3><input id="profile-id" type="hidden">
               <div class="form-grid">
@@ -127,7 +127,7 @@
           </div>
         </section>
 
-        <section id="view-rules" class="view hidden">
+        <section id="view-rules" class="view" hidden>
           <div class="view-head"><div><h2>Cyber 规则</h2><p>规则按优先级从高到低执行。Block 或 Allow 直接决策，Review 交给小模型。</p></div><button id="new-rule-button" class="btn btn-primary">新增规则</button></div>
           <div class="grid split">
             <div class="card"><h3>规则列表</h3><div id="rules-table"></div></div>
@@ -149,13 +149,13 @@
           </div>
         </section>
 
-        <section id="view-traces" class="view hidden">
+        <section id="view-traces" class="view" hidden>
           <div class="view-head"><div><h2>请求追踪</h2><p>默认查询最近 24 小时；只保存 HMAC 指纹和经过清洗的元数据。</p></div></div>
           <div class="card"><form id="trace-filter" class="filter-row"><div class="field"><label for="trace-route">路由</label><input id="trace-route"></div><div class="field"><label for="trace-user">用户标识</label><input id="trace-user"></div><div class="field"><label for="trace-decision">决策</label><select id="trace-decision"><option value="">全部</option><option value="allow">Allow</option><option value="block">Block</option><option value="error">Error</option><option value="review">Review</option></select></div><div class="field"><label for="trace-risk">风险码</label><input id="trace-risk"></div><div class="field"><label for="trace-limit">条数</label><select id="trace-limit"><option>100</option><option selected>200</option><option>500</option><option>1000</option></select></div><button class="btn btn-primary" type="submit">查询</button></form></div>
           <div class="card"><div id="traces-table"></div></div>
         </section>
 
-        <section id="view-storage" class="view hidden">
+        <section id="view-storage" class="view" hidden>
           <div class="view-head"><div><h2>存储策略</h2><p>PostgreSQL 是 7 天默认检索窗口；Kafka 用于长期事件流，Redis Stream 用作故障队列。</p></div></div>
           <div class="grid split">
             <form id="storage-form" class="form-card"><h3>保留设置</h3><div class="field"><label for="retention-days">PostgreSQL 保留天数</label><input id="retention-days" type="number" min="1" max="365" value="7"></div><div class="field"><label for="kafka-retention-days">Kafka Topic 保留天数</label><input id="kafka-retention-days" type="number" min="1" max="3650" value="30"><small>运行账户需要 Kafka ALTER_CONFIGS 权限。</small></div><div class="field"><label for="redis-stream-maxlen">Redis DLQ 最大事件数</label><input id="redis-stream-maxlen" type="number" min="1000" value="100000"></div><div class="notice warning">原始提示词存储被平台硬性关闭，页面不能开启，避免风控日志形成敏感内容仓库。</div><div class="form-actions"><button class="btn btn-primary" type="submit">保存并应用</button></div></form>
@@ -163,11 +163,11 @@
           </div>
         </section>
 
-        <section id="view-integration" class="view hidden">
+        <section id="view-integration" class="view" hidden>
           <div class="view-head"><div><h2>New API 接入</h2><p>创建追踪客户端，并把风险路由配置成 New API 渠道地址。</p></div></div>
           <div class="grid split">
             <div class="grid"><div class="card"><h3>追踪客户端</h3><div id="clients-table"></div></div><div class="card"><div class="panel-head"><h3>签名示例</h3><button id="copy-snippet" class="btn btn-small btn-secondary">复制</button></div><pre id="integration-snippet" class="code"></pre></div></div>
-            <form id="client-form" class="form-card"><h3>创建或更新客户端</h3><div class="field"><label for="client-key-id">Key ID</label><input id="client-key-id" placeholder="newapi-prod" required></div><div class="field"><label for="client-name">名称</label><input id="client-name" required></div><div class="field"><label for="client-secret">Secret</label><input id="client-secret" type="password"><small>新建留空自动生成；更新留空保留；填写则轮换。</small></div><div class="checks"><label class="check"><input id="client-enabled" type="checkbox" checked>启用</label></div><button class="btn btn-primary" type="submit">保存客户端</button><div id="client-secret-result" class="secret-box hidden"><strong>请立即保存 Secret</strong><div id="client-secret-value" class="mono break"></div></div></form>
+            <form id="client-form" class="form-card"><h3>创建或更新客户端</h3><div class="field"><label for="client-key-id">Key ID</label><input id="client-key-id" placeholder="newapi-prod" required></div><div class="field"><label for="client-name">名称</label><input id="client-name" required></div><div class="field"><label for="client-secret">Secret</label><input id="client-secret" type="password"><small>新建留空自动生成；更新留空保留；填写则轮换。</small></div><div class="checks"><label class="check"><input id="client-enabled" type="checkbox" checked>启用</label></div><button class="btn btn-primary" type="submit">保存客户端</button><div id="client-secret-result" class="secret-box" hidden><strong>请立即保存 Secret</strong><div id="client-secret-value" class="mono break"></div></div></form>
           </div>
           <div class="card"><h3>渠道调用方式</h3><div class="notice">New API 渠道 Base URL：<span class="mono">https://risk.example.com/gateway/&lt;route-slug&gt;</span><br>渠道 Key：填写路由的“New API 渠道 Key”。平台验证后替换为真实上游密钥。</div></div>
         </section>

@@ -325,7 +325,12 @@ func (g *Gateway) buildUpstreamRequest(
 		return nil, err
 	}
 	copyRequestHeaders(request.Header, inbound.Header)
+	inboundAuthorization := request.Header.Get("Authorization")
 	for _, key := range []string{
+		"Authorization",
+		"X-API-Key",
+		"X-Goog-Api-Key",
+		"Api-Key",
 		"X-Risk-Gateway-Key",
 		"X-NewAPI-User-ID",
 		"X-User-ID",
@@ -350,9 +355,10 @@ func (g *Gateway) buildUpstreamRequest(
 	case "", "none":
 		request.Header.Del("Authorization")
 	case "passthrough":
-		if inbound.Header.Get("X-Risk-Gateway-Key") == "" {
-			return nil, errors.New("passthrough auth requires X-Risk-Gateway-Key so Authorization is preserved")
+		if inbound.Header.Get("X-Risk-Gateway-Key") == "" || inboundAuthorization == "" {
+			return nil, errors.New("passthrough auth requires X-Risk-Gateway-Key and an Authorization header")
 		}
+		request.Header.Set("Authorization", inboundAuthorization)
 	case "bearer":
 		request.Header.Set("Authorization", "Bearer "+string(secret))
 	case "anthropic":

@@ -190,10 +190,20 @@ func (s *EventSink) writeWorker(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			flush(shutdownContext)
-			cancel()
-			return
+			shutdownContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			for {
+				select {
+				case event := <-s.queue:
+					batch = append(batch, event)
+					if len(batch) >= 200 {
+						flush(shutdownContext)
+					}
+				default:
+					flush(shutdownContext)
+					cancel()
+					return
+				}
+			}
 		case event := <-s.queue:
 			batch = append(batch, event)
 			if len(batch) >= 200 {
