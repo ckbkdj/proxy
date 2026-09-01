@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>New API 风控平台</title>
+  <style nonce="{{NONCE}}">
+    :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#172033;background:#f4f7fb;line-height:1.45}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh}button,input,select,textarea{font:inherit}button{cursor:pointer}
+    .hidden,[hidden]{display:none!important}.muted{color:#697386}.danger-text{color:#b42318}.success-text{color:#067647}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+    .login{min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at top left,#dce9ff,transparent 38%),linear-gradient(135deg,#f5f8ff,#eef2f8)}
+    .login-card{width:min(430px,100%);background:#fff;border:1px solid #dfe6f0;border-radius:20px;padding:32px;box-shadow:0 24px 70px rgba(32,52,84,.14)}
+    .brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:19px}.brand-mark{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:#175cd3;color:white;font-weight:900}
+    h1{font-size:28px;margin:24px 0 6px}h2{font-size:22px;margin:0}h3{font-size:17px;margin:0 0 14px}.login-card p{margin:0 0 24px;color:#667085}
+    .field{display:grid;gap:7px;margin-bottom:14px}.field label{font-size:13px;font-weight:700;color:#344054}.field small{font-size:12px;color:#697386}
+    input,select,textarea{width:100%;border:1px solid #cfd8e6;border-radius:9px;padding:10px 11px;background:#fff;color:#172033;outline:none}
+    input:focus,select:focus,textarea:focus{border-color:#528bdf;box-shadow:0 0 0 3px rgba(23,92,211,.12)}textarea{min-height:92px;resize:vertical}
+    .btn{border:1px solid transparent;border-radius:9px;padding:9px 14px;font-weight:700;background:#fff;color:#344054}.btn:hover{filter:brightness(.98)}
+    .btn-primary{background:#175cd3;color:#fff}.btn-secondary{border-color:#cfd8e6}.btn-danger{background:#fff1f0;color:#b42318;border-color:#fecdca}.btn-small{padding:6px 9px;font-size:12px}.btn-block{width:100%}
+    .app{min-height:100vh;display:grid;grid-template-columns:240px 1fr}.sidebar{position:sticky;top:0;height:100vh;background:#101828;color:#e4e7ec;padding:20px 14px;display:flex;flex-direction:column}
+    .sidebar .brand{padding:0 8px 22px}.nav{display:grid;gap:5px}.nav button{border:0;background:transparent;color:#aeb9ca;text-align:left;padding:10px 12px;border-radius:8px;font-weight:650}.nav button:hover,.nav button.active{background:#1d2939;color:#fff}
+    .sidebar-foot{margin-top:auto;padding:14px 8px 0;border-top:1px solid #344054;color:#98a2b3;font-size:12px}.sidebar-foot strong{display:block;color:#fff;margin-bottom:4px}
+    .workspace{min-width:0}.topbar{height:68px;background:#fff;border-bottom:1px solid #e4e7ec;display:flex;align-items:center;justify-content:space-between;padding:0 28px;position:sticky;top:0;z-index:5}
+    .topbar-actions{display:flex;align-items:center;gap:9px}.content{padding:26px 28px 50px;max-width:1600px;margin:0 auto}.view{display:grid;gap:20px}.view-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}.view-head p{margin:5px 0 0;color:#667085}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}.grid{display:grid;gap:16px}.cards{grid-template-columns:repeat(4,minmax(0,1fr))}.card{background:#fff;border:1px solid #e0e7f0;border-radius:13px;padding:18px;box-shadow:0 3px 12px rgba(16,24,40,.035)}
+    .metric-label{font-size:13px;color:#667085;font-weight:650}.metric-value{font-size:29px;font-weight:800;margin-top:7px}.metric-sub{font-size:12px;color:#667085;margin-top:3px}
+    .split{grid-template-columns:minmax(0,1fr) minmax(340px,.55fr)}.three{grid-template-columns:repeat(3,minmax(0,1fr))}.panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+    .table-wrap{overflow:auto;border:1px solid #e0e7f0;border-radius:10px}table{width:100%;border-collapse:collapse;min-width:760px;background:#fff}th,td{padding:11px 12px;border-bottom:1px solid #edf1f6;text-align:left;font-size:13px;vertical-align:top}th{background:#f8fafc;color:#475467;font-size:12px;text-transform:uppercase;letter-spacing:.03em}tr:last-child td{border-bottom:0}
+    .badge{display:inline-flex;align-items:center;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:800;background:#eef2f6;color:#475467}.badge.allow,.badge.ok,.badge.enabled{background:#ecfdf3;color:#067647}.badge.block,.badge.error,.badge.disabled{background:#fff1f0;color:#b42318}.badge.review,.badge.warn{background:#fffaeb;color:#b54708}
+    .form-card{background:#fff;border:1px solid #dfe6f0;border-radius:13px;padding:18px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}.form-grid .wide{grid-column:1/-1}.checks{display:flex;gap:18px;flex-wrap:wrap;margin:8px 0 17px}.check{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:650}.check input{width:auto}
+    .form-actions{display:flex;justify-content:flex-end;gap:9px;padding-top:4px}.empty{padding:28px;text-align:center;color:#667085}.code{white-space:pre-wrap;word-break:break-word;background:#101828;color:#d0d5dd;border-radius:10px;padding:14px;max-height:360px;overflow:auto;font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace}
+    .notice{padding:12px 14px;border:1px solid #b2ccff;background:#eff4ff;border-radius:10px;color:#1849a9;font-size:13px}.warning{border-color:#fedf89;background:#fffaeb;color:#93370d}.toast{position:fixed;right:22px;bottom:22px;z-index:30;max-width:430px;padding:12px 15px;border-radius:10px;color:#fff;background:#344054;box-shadow:0 10px 30px rgba(0,0,0,.2)}.toast.error{background:#b42318}.toast.success{background:#067647}
+    .filter-row{display:grid;grid-template-columns:repeat(5,minmax(140px,1fr));gap:10px;align-items:end}.status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.status-item{border:1px solid #e0e7f0;border-radius:10px;padding:13px}.status-item span{display:block;font-size:12px;color:#667085}.status-item strong{display:block;margin-top:4px}
+    .secret-box{border:1px dashed #f79009;background:#fffcf5;border-radius:10px;padding:12px;margin-top:12px}.secret-box strong{display:block;color:#93370d;margin-bottom:6px}.break{word-break:break-all}
+    @media(max-width:1100px){.cards{grid-template-columns:repeat(2,1fr)}.split{grid-template-columns:1fr}.filter-row{grid-template-columns:repeat(2,1fr)}.status-grid{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:760px){.app{grid-template-columns:1fr}.sidebar{position:static;height:auto}.nav{grid-template-columns:repeat(2,1fr)}.sidebar-foot{display:none}.topbar{padding:0 16px}.content{padding:20px 14px}.cards,.three,.form-grid,.status-grid{grid-template-columns:1fr}.form-grid .wide{grid-column:auto}.view-head{display:grid}.filter-row{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div id="login-screen" class="login">
+    <form id="login-form" class="login-card">
+      <div class="brand"><span class="brand-mark">R</span><span>New API 风控平台</span></div>
+      <h1>管理员登录</h1>
+      <p>管理渠道风控、审计模型、Cyber 规则和请求追踪。</p>
+      <div class="field"><label for="login-username">用户名</label><input id="login-username" autocomplete="username" required></div>
+      <div class="field"><label for="login-password">密码</label><input id="login-password" type="password" autocomplete="current-password" required></div>
+      <button class="btn btn-primary btn-block" type="submit">登录</button>
+      <div id="login-error" class="danger-text hidden"></div>
+    </form>
+  </div>
+
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">R</span><span>风控控制台</span></div>
+      <nav class="nav" id="nav">
+        <button data-view="dashboard" class="active">总览</button>
+        <button data-view="routes">渠道路由</button>
+        <button data-view="profiles">审计模型</button>
+        <button data-view="rules">Cyber 规则</button>
+        <button data-view="traces">请求追踪</button>
+        <button data-view="storage">存储策略</button>
+        <button data-view="integration">New API 接入</button>
+      </nav>
+      <div class="sidebar-foot"><strong id="sidebar-user">-</strong><span id="sidebar-role">-</span></div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <div><strong id="page-title">总览</strong></div>
+        <div class="topbar-actions"><button id="refresh-button" class="btn btn-secondary">刷新</button><button id="logout-button" class="btn btn-secondary">退出</button></div>
+      </header>
+      <main class="content">
+        <div id="toast" class="toast hidden"></div>
+
+        <section id="view-dashboard" class="view">
+          <div class="view-head"><div><h2>运行总览</h2><p>最近 24 小时的请求、拦截与基础设施状态。</p></div></div>
+          <div id="dashboard-cards" class="grid cards"></div>
+          <div id="runtime-status" class="card"></div>
+          <div class="grid split"><div class="card"><h3>风险码分布</h3><div id="risk-code-table"></div></div><div class="card"><h3>路由请求量</h3><div id="route-volume-table"></div></div></div>
+        </section>
+
+        <section id="view-routes" class="view hidden">
+          <div class="view-head"><div><h2>渠道路由</h2><p>New API 调用本平台后，由路由决定审计配置、上游渠道和并发限制。</p></div><button id="new-route-button" class="btn btn-primary">新增路由</button></div>
+          <div class="grid split">
+            <div class="card"><div class="panel-head"><h3>路由列表</h3><span id="route-count" class="badge">0</span></div><div id="routes-table"></div></div>
+            <form id="route-form" class="form-card">
+              <h3 id="route-form-title">新增路由</h3><input id="route-id" type="hidden">
+              <div class="form-grid">
+                <div class="field"><label for="route-slug">标识 Slug</label><input id="route-slug" placeholder="openai-main" required></div>
+                <div class="field"><label for="route-name">名称</label><input id="route-name" required></div>
+                <div class="field wide"><label for="route-base-url">上游 Base URL</label><input id="route-base-url" placeholder="https://api.openai.com" required><small>不要包含查询参数。New API 的剩余请求路径会自动拼接。</small></div>
+                <div class="field"><label for="route-provider">协议类型</label><select id="route-provider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="gemini">Gemini</option><option value="generic">通用</option></select></div>
+                <div class="field"><label for="route-auth-mode">上游鉴权</label><select id="route-auth-mode"><option value="bearer">Bearer</option><option value="anthropic">Anthropic x-api-key</option><option value="gemini">Gemini x-goog-api-key</option><option value="header">自定义 Header</option><option value="query">Query 参数</option><option value="none">无鉴权</option><option value="passthrough">透传 Authorization</option></select></div>
+                <div class="field"><label for="route-secret-header">Header / Query 名称</label><input id="route-secret-header" placeholder="X-API-Key"></div>
+                <div class="field"><label for="route-profile">审计模型</label><select id="route-profile"><option value="">默认模型</option></select></div>
+                <div class="field wide"><label for="route-upstream-secret">上游密钥</label><input id="route-upstream-secret" type="password" autocomplete="new-password"><small>编辑时留空表示保留现有密钥。</small></div>
+                <div class="field wide"><label for="route-inbound-key">New API 渠道 Key</label><input id="route-inbound-key" type="password" autocomplete="new-password"><small>New API 可把此值作为渠道 Bearer Key；编辑时留空表示保留。</small></div>
+                <div class="field"><label for="route-timeout">超时（毫秒）</label><input id="route-timeout" type="number" min="1000" value="120000"></div>
+                <div class="field"><label for="route-concurrency">最大并发</label><input id="route-concurrency" type="number" min="1" value="256"></div>
+                <div class="field"><label for="route-rps">每秒请求数（0=不限）</label><input id="route-rps" type="number" min="0" step="0.1" value="100"></div>
+                <div class="field"><label for="route-burst">突发容量</label><input id="route-burst" type="number" min="1" value="200"></div>
+              </div>
+              <div class="checks"><label class="check"><input id="route-enabled" type="checkbox" checked>启用</label><label class="check"><input id="route-fail-closed" type="checkbox" checked>审计失败时拦截</label></div>
+              <div class="form-actions"><button id="route-reset" class="btn btn-secondary" type="button">重置</button><button class="btn btn-primary" type="submit">保存路由</button></div>
+            </form>
+          </div>
+        </section>
+
+        <section id="view-profiles" class="view hidden">
+          <div class="view-head"><div><h2>审计模型</h2><p>配置 OpenAI 兼容的小模型接口。规则未直接决策时调用此模型。</p></div><button id="new-profile-button" class="btn btn-primary">新增模型</button></div>
+          <div class="grid split">
+            <div class="grid"><div class="card"><h3>模型配置</h3><div id="profiles-table"></div></div><div class="card"><h3>审计试运行</h3><form id="dry-run-form"><div class="field"><label for="dry-run-profile">模型配置</label><select id="dry-run-profile"><option value="">默认模型</option></select></div><div class="field"><label for="dry-run-text">测试文本</label><textarea id="dry-run-text" required></textarea></div><button class="btn btn-secondary" type="submit">执行审计</button></form><div id="dry-run-result" class="notice hidden"></div></div></div>
+            <form id="profile-form" class="form-card">
+              <h3 id="profile-form-title">新增模型</h3><input id="profile-id" type="hidden">
+              <div class="form-grid">
+                <div class="field wide"><label for="profile-name">名称</label><input id="profile-name" required></div>
+                <div class="field wide"><label for="profile-endpoint">兼容接口 Base URL</label><input id="profile-endpoint" placeholder="http://audit-model:8000/v1" required></div>
+                <div class="field"><label for="profile-model">模型</label><input id="profile-model" placeholder="Qwen3-4B-AWQ" required></div>
+                <div class="field"><label for="profile-timeout">超时（毫秒）</label><input id="profile-timeout" type="number" min="250" value="8000"></div>
+                <div class="field"><label for="profile-threshold">拦截阈值</label><input id="profile-threshold" type="number" min="0" max="1" step="0.01" value="0.65"></div>
+                <div class="field"><label for="profile-api-key">API Key</label><input id="profile-api-key" type="password"><small>编辑留空表示保留。</small></div>
+                <div class="field wide"><label for="profile-system-prompt">系统提示词</label><textarea id="profile-system-prompt" placeholder="留空使用平台默认 Cyber 分类提示词"></textarea></div>
+                <div class="field wide"><label for="profile-extra">额外 JSON 参数</label><textarea id="profile-extra">{}</textarea></div>
+              </div>
+              <div class="checks"><label class="check"><input id="profile-enabled" type="checkbox" checked>启用</label><label class="check"><input id="profile-fail-closed" type="checkbox" checked>模型失败时拦截</label><label class="check"><input id="profile-default" type="checkbox">设为默认</label></div>
+              <div class="form-actions"><button id="profile-reset" class="btn btn-secondary" type="button">重置</button><button class="btn btn-primary" type="submit">保存模型</button></div>
+            </form>
+          </div>
+        </section>
+
+        <section id="view-rules" class="view hidden">
+          <div class="view-head"><div><h2>Cyber 规则</h2><p>规则按优先级从高到低执行。Block 或 Allow 直接决策，Review 交给小模型。</p></div><button id="new-rule-button" class="btn btn-primary">新增规则</button></div>
+          <div class="grid split">
+            <div class="card"><h3>规则列表</h3><div id="rules-table"></div></div>
+            <form id="rule-form" class="form-card">
+              <h3 id="rule-form-title">新增规则</h3><input id="rule-id" type="hidden">
+              <div class="form-grid">
+                <div class="field"><label for="rule-code">风险码</label><input id="rule-code" placeholder="CYBER_CUSTOM_RULE" required></div>
+                <div class="field"><label for="rule-name">名称</label><input id="rule-name" required></div>
+                <div class="field"><label for="rule-category">分类</label><input id="rule-category" required></div>
+                <div class="field"><label for="rule-priority">优先级</label><input id="rule-priority" type="number" value="100"></div>
+                <div class="field"><label for="rule-pattern-type">匹配方式</label><select id="rule-pattern-type"><option value="regex">正则</option><option value="contains">包含</option><option value="exact">完全相等</option></select></div>
+                <div class="field"><label for="rule-action">动作</label><select id="rule-action"><option value="block">Block</option><option value="review">Review</option><option value="allow">Allow</option></select></div>
+                <div class="field wide"><label for="rule-description">说明</label><textarea id="rule-description"></textarea></div>
+                <div class="field wide"><label for="rule-pattern">模式</label><textarea id="rule-pattern" class="mono" required></textarea></div>
+              </div>
+              <div class="checks"><label class="check"><input id="rule-enabled" type="checkbox" checked>启用</label></div>
+              <div class="form-actions"><button id="rule-reset" class="btn btn-secondary" type="button">重置</button><button class="btn btn-primary" type="submit">保存规则</button></div>
+            </form>
+          </div>
+        </section>
+
+        <section id="view-traces" class="view hidden">
+          <div class="view-head"><div><h2>请求追踪</h2><p>默认查询最近 24 小时；只保存 HMAC 指纹和经过清洗的元数据。</p></div></div>
+          <div class="card"><form id="trace-filter" class="filter-row"><div class="field"><label for="trace-route">路由</label><input id="trace-route"></div><div class="field"><label for="trace-user">用户标识</label><input id="trace-user"></div><div class="field"><label for="trace-decision">决策</label><select id="trace-decision"><option value="">全部</option><option value="allow">Allow</option><option value="block">Block</option><option value="error">Error</option><option value="review">Review</option></select></div><div class="field"><label for="trace-risk">风险码</label><input id="trace-risk"></div><div class="field"><label for="trace-limit">条数</label><select id="trace-limit"><option>100</option><option selected>200</option><option>500</option><option>1000</option></select></div><button class="btn btn-primary" type="submit">查询</button></form></div>
+          <div class="card"><div id="traces-table"></div></div>
+        </section>
+
+        <section id="view-storage" class="view hidden">
+          <div class="view-head"><div><h2>存储策略</h2><p>PostgreSQL 是 7 天默认检索窗口；Kafka 用于长期事件流，Redis Stream 用作故障队列。</p></div></div>
+          <div class="grid split">
+            <form id="storage-form" class="form-card"><h3>保留设置</h3><div class="field"><label for="retention-days">PostgreSQL 保留天数</label><input id="retention-days" type="number" min="1" max="365" value="7"></div><div class="field"><label for="kafka-retention-days">Kafka Topic 保留天数</label><input id="kafka-retention-days" type="number" min="1" max="3650" value="30"><small>运行账户需要 Kafka ALTER_CONFIGS 权限。</small></div><div class="field"><label for="redis-stream-maxlen">Redis DLQ 最大事件数</label><input id="redis-stream-maxlen" type="number" min="1000" value="100000"></div><div class="notice warning">原始提示词存储被平台硬性关闭，页面不能开启，避免风控日志形成敏感内容仓库。</div><div class="form-actions"><button class="btn btn-primary" type="submit">保存并应用</button></div></form>
+            <div class="card"><h3>当前配置</h3><div id="storage-status" class="status-grid"></div></div>
+          </div>
+        </section>
+
+        <section id="view-integration" class="view hidden">
+          <div class="view-head"><div><h2>New API 接入</h2><p>创建追踪客户端，并把风险路由配置成 New API 渠道地址。</p></div></div>
+          <div class="grid split">
+            <div class="grid"><div class="card"><h3>追踪客户端</h3><div id="clients-table"></div></div><div class="card"><div class="panel-head"><h3>签名示例</h3><button id="copy-snippet" class="btn btn-small btn-secondary">复制</button></div><pre id="integration-snippet" class="code"></pre></div></div>
+            <form id="client-form" class="form-card"><h3>创建或更新客户端</h3><div class="field"><label for="client-key-id">Key ID</label><input id="client-key-id" placeholder="newapi-prod" required></div><div class="field"><label for="client-name">名称</label><input id="client-name" required></div><div class="field"><label for="client-secret">Secret</label><input id="client-secret" type="password"><small>新建留空自动生成；更新留空保留；填写则轮换。</small></div><div class="checks"><label class="check"><input id="client-enabled" type="checkbox" checked>启用</label></div><button class="btn btn-primary" type="submit">保存客户端</button><div id="client-secret-result" class="secret-box hidden"><strong>请立即保存 Secret</strong><div id="client-secret-value" class="mono break"></div></div></form>
+          </div>
+          <div class="card"><h3>渠道调用方式</h3><div class="notice">New API 渠道 Base URL：<span class="mono">https://risk.example.com/gateway/&lt;route-slug&gt;</span><br>渠道 Key：填写路由的“New API 渠道 Key”。平台验证后替换为真实上游密钥。</div></div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script nonce="{{NONCE}}">
+    (() => {
+      const state = { token: sessionStorage.getItem('risk_token') || '', user: null, view: 'dashboard', routes: [], profiles: [], rules: [], clients: [] };
+      const titles = {dashboard:'总览',routes:'渠道路由',profiles:'审计模型',rules:'Cyber 规则',traces:'请求追踪',storage:'存储策略',integration:'New API 接入'};
+      const $ = id => document.getElementById(id);
+      const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
+      const dateText = value => value ? new Date(value).toLocaleString() : '-';
+      const badge = value => `<span class="badge ${escapeHTML(String(value).toLowerCase())}">${escapeHTML(value)}</span>`;
+      const number = value => new Intl.NumberFormat().format(Number(value || 0));
+      let toastTimer;
+
+      function toast(message, type='success') {
+        const element = $('toast'); element.textContent = message; element.className = `toast ${type}`; element.hidden = false;
+        clearTimeout(toastTimer); toastTimer = setTimeout(() => { element.hidden = true; }, 4200);
+      }
+      async function api(path, options={}) {
+        const headers = new Headers(options.headers || {});
+        if (state.token) headers.set('Authorization', `Bearer ${state.token}`);
+        if (options.body && !headers.has('Content-Type')) headers.set('Content-Type','application/json');
+        const response = await fetch(path, {...options, headers});
+        if (response.status === 401 && path !== '/api/admin/v1/login') { logout(); throw new Error('登录已过期'); }
+        const text = await response.text(); let payload = null;
+        if (text) { try { payload = JSON.parse(text); } catch { payload = {raw:text}; } }
+        if (!response.ok) throw new Error(payload?.error?.message || `请求失败：HTTP ${response.status}`);
+        return payload;
+      }
+      function showLogin() { $('login-screen').hidden=false; $('app').hidden=true; }
+      function showApp() { $('login-screen').hidden=true; $('app').hidden=false; $('sidebar-user').textContent=state.user?.username || '-'; $('sidebar-role').textContent=state.user?.role || '-'; }
+      function logout() { state.token=''; state.user=null; sessionStorage.removeItem('risk_token'); showLogin(); }
+      async function login(event) {
+        event.preventDefault(); $('login-error').hidden=true;
+        try {
+          const result = await api('/api/admin/v1/login',{method:'POST',body:JSON.stringify({username:$('login-username').value,password:$('login-password').value})});
+          state.token=result.access_token; state.user=result.user; sessionStorage.setItem('risk_token',state.token); $('login-password').value=''; showApp(); await setView('dashboard');
+        } catch (error) { $('login-error').textContent=error.message; $('login-error').hidden=false; }
+      }
+      async function restoreSession() {
+        if (!state.token) return showLogin();
+        try { state.user=await api('/api/admin/v1/me'); showApp(); await setView('dashboard'); } catch { logout(); }
+      }
+      async function setView(view) {
+        state.view=view; document.querySelectorAll('.view').forEach(element => element.hidden=true); $(`view-${view}`).hidden=false;
+        document.querySelectorAll('#nav button').forEach(button => button.classList.toggle('active',button.dataset.view===view)); $('page-title').textContent=titles[view] || view;
+        try { await loaders[view](); } catch (error) { toast(error.message,'error'); }
+      }
+      async function refreshCurrent() { try { await loaders[state.view](); toast('数据已刷新'); } catch (error) { toast(error.message,'error'); } }
+
+      const smallTable = entries => entries.length ? `<div class="table-wrap"><table><thead><tr><th>项目</th><th>数量</th></tr></thead><tbody>${entries.map(([key,value])=>`<tr><td>${escapeHTML(key || '(空)')}</td><td>${number(value)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">暂无数据</div>';
+      async function loadDashboard() {
+        const [stats,runtime] = await Promise.all([api('/api/admin/v1/dashboard'),api('/api/admin/v1/runtime')]);
+        const cards=[['总请求',number(stats.total_requests),'最近 24 小时'],['已放行',number(stats.allowed_requests),'正常转发'],['已拦截',number(stats.blocked_requests),`${(Number(stats.block_rate||0)*100).toFixed(2)}% 拦截率`],['P95 延迟',`${Number(stats.p95_latency_ms||0).toFixed(0)} ms`,'端到端']];
+        $('dashboard-cards').innerHTML=cards.map(item=>`<div class="card"><div class="metric-label">${item[0]}</div><div class="metric-value">${item[1]}</div><div class="metric-sub">${item[2]}</div></div>`).join('');
+        $('runtime-status').innerHTML=`<div class="panel-head"><h3>运行状态</h3>${badge(runtime.postgres_healthy?'ok':'error')}</div><div class="status-grid"><div class="status-item"><span>PostgreSQL</span><strong>${runtime.postgres_healthy?'健康':'异常'}</strong></div><div class="status-item"><span>Redis</span><strong>${escapeHTML(runtime.redis?.status||'disabled')}</strong></div><div class="status-item"><span>Kafka</span><strong>${runtime.kafka_enabled?'启用':'未启用'}</strong></div><div class="status-item"><span>追踪队列</span><strong>${number(runtime.trace_queue_depth)} / 丢弃 ${number(runtime.trace_dropped)}</strong></div></div>`;
+        $('risk-code-table').innerHTML=smallTable(Object.entries(stats.by_risk_code||{})); $('route-volume-table').innerHTML=smallTable(Object.entries(stats.by_route||{}));
+      }
+
+      function fillProfileOptions() {
+        const options=state.profiles.map(profile=>`<option value="${profile.id}">${escapeHTML(profile.name)}${profile.is_default?'（默认）':''}</option>`).join('');
+        $('route-profile').innerHTML=`<option value="">默认模型</option>${options}`; $('dry-run-profile').innerHTML=`<option value="">默认模型</option>${options}`;
+      }
+      async function ensureProfiles() { const data=await api('/api/admin/v1/audit-profiles'); state.profiles=data.items||[]; fillProfileOptions(); }
+      async function loadRoutes() {
+        await ensureProfiles(); const data=await api('/api/admin/v1/routes'); state.routes=data.items||[]; $('route-count').textContent=state.routes.length;
+        $('routes-table').innerHTML=state.routes.length?`<div class="table-wrap"><table><thead><tr><th>路由</th><th>上游</th><th>审计</th><th>限制</th><th>状态</th><th>操作</th></tr></thead><tbody>${state.routes.map(route=>`<tr><td><strong>${escapeHTML(route.name)}</strong><br><span class="mono">${escapeHTML(route.slug)}</span></td><td>${escapeHTML(route.provider)} / ${escapeHTML(route.auth_mode)}<br><span class="muted">${escapeHTML(route.base_url)}</span></td><td>${route.audit_profile_id?`#${route.audit_profile_id}`:'默认'}<br>${route.fail_closed?badge('fail-closed'):badge('fail-open')}</td><td>${number(route.max_concurrency)} 并发<br>${route.rate_limit_rps||0} RPS</td><td>${badge(route.enabled?'enabled':'disabled')}</td><td><button class="btn btn-small btn-secondary" data-route-edit="${route.id}">编辑</button> <button class="btn btn-small btn-danger" data-route-delete="${route.id}">删除</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">尚未配置路由</div>';
+      }
+      function resetRoute() { $('route-form').reset(); $('route-id').value=''; $('route-form-title').textContent='新增路由'; $('route-timeout').value='120000'; $('route-concurrency').value='256'; $('route-rps').value='100'; $('route-burst').value='200'; $('route-enabled').checked=true; $('route-fail-closed').checked=true; $('route-upstream-secret').value=''; $('route-inbound-key').value=''; }
+      function editRoute(id) { const route=state.routes.find(item=>item.id===Number(id)); if(!route)return; $('route-id').value=route.id; $('route-slug').value=route.slug; $('route-name').value=route.name; $('route-base-url').value=route.base_url; $('route-provider').value=route.provider; $('route-auth-mode').value=route.auth_mode; $('route-secret-header').value=route.secret_header||''; $('route-profile').value=route.audit_profile_id||''; $('route-timeout').value=route.request_timeout_ms; $('route-concurrency').value=route.max_concurrency; $('route-rps').value=route.rate_limit_rps; $('route-burst').value=route.rate_limit_burst; $('route-enabled').checked=route.enabled; $('route-fail-closed').checked=route.fail_closed; $('route-upstream-secret').value=''; $('route-inbound-key').value=''; $('route-form-title').textContent=`编辑路由 #${route.id}`; $('route-form').scrollIntoView({behavior:'smooth',block:'start'}); }
+      async function saveRoute(event) { event.preventDefault(); const payload={id:Number($('route-id').value||0),slug:$('route-slug').value,name:$('route-name').value,base_url:$('route-base-url').value,provider:$('route-provider').value,auth_mode:$('route-auth-mode').value,secret_header:$('route-secret-header').value,upstream_secret:$('route-upstream-secret').value,inbound_key:$('route-inbound-key').value,audit_profile_id:$('route-profile').value?Number($('route-profile').value):null,enabled:$('route-enabled').checked,fail_closed:$('route-fail-closed').checked,request_timeout_ms:Number($('route-timeout').value),max_concurrency:Number($('route-concurrency').value),rate_limit_rps:Number($('route-rps').value),rate_limit_burst:Number($('route-burst').value)}; try{await api('/api/admin/v1/routes',{method:'POST',body:JSON.stringify(payload)});toast('路由已保存');resetRoute();await loadRoutes();}catch(error){toast(error.message,'error');} }
+      async function deleteRoute(id) { if(!confirm('确认删除该路由？'))return; try{await api(`/api/admin/v1/routes/${id}`,{method:'DELETE'});toast('路由已删除');await loadRoutes();}catch(error){toast(error.message,'error');} }
+
+      async function loadProfiles() { await ensureProfiles(); $('profiles-table').innerHTML=state.profiles.length?`<div class="table-wrap"><table><thead><tr><th>名称</th><th>模型</th><th>策略</th><th>状态</th><th>操作</th></tr></thead><tbody>${state.profiles.map(profile=>`<tr><td><strong>${escapeHTML(profile.name)}</strong><br><span class="muted">${escapeHTML(profile.endpoint)}</span></td><td>${escapeHTML(profile.model)}<br>${profile.api_key_configured?'已配置 Key':'无 Key'}</td><td>阈值 ${profile.block_threshold}<br>${profile.fail_closed?badge('fail-closed'):badge('fail-open')}</td><td>${profile.is_default?badge('default'):badge(profile.enabled?'enabled':'disabled')}</td><td><button class="btn btn-small btn-secondary" data-profile-edit="${profile.id}">编辑</button> <button class="btn btn-small btn-danger" data-profile-delete="${profile.id}" ${profile.is_default?'disabled':''}>删除</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">尚未配置审计模型</div>'; }
+      function resetProfile() { $('profile-form').reset(); $('profile-id').value=''; $('profile-form-title').textContent='新增模型'; $('profile-timeout').value='8000'; $('profile-threshold').value='0.65'; $('profile-extra').value='{}'; $('profile-enabled').checked=true; $('profile-fail-closed').checked=true; $('profile-default').checked=false; }
+      function editProfile(id) { const profile=state.profiles.find(item=>item.id===Number(id));if(!profile)return;$('profile-id').value=profile.id;$('profile-name').value=profile.name;$('profile-endpoint').value=profile.endpoint;$('profile-model').value=profile.model;$('profile-api-key').value='';$('profile-system-prompt').value=profile.system_prompt||'';$('profile-timeout').value=profile.timeout_ms;$('profile-threshold').value=profile.block_threshold;$('profile-extra').value=JSON.stringify(profile.extra||{},null,2);$('profile-enabled').checked=profile.enabled;$('profile-fail-closed').checked=profile.fail_closed;$('profile-default').checked=profile.is_default;$('profile-form-title').textContent=`编辑模型 #${profile.id}`;$('profile-form').scrollIntoView({behavior:'smooth',block:'start'}); }
+      async function saveProfile(event) { event.preventDefault();let extra;try{extra=JSON.parse($('profile-extra').value||'{}');}catch{toast('额外参数不是合法 JSON','error');return;}const payload={id:Number($('profile-id').value||0),name:$('profile-name').value,endpoint:$('profile-endpoint').value,model:$('profile-model').value,api_key:$('profile-api-key').value,system_prompt:$('profile-system-prompt').value,timeout_ms:Number($('profile-timeout').value),block_threshold:Number($('profile-threshold').value),enabled:$('profile-enabled').checked,fail_closed:$('profile-fail-closed').checked,is_default:$('profile-default').checked,extra};try{await api('/api/admin/v1/audit-profiles',{method:'POST',body:JSON.stringify(payload)});toast('审计模型已保存');resetProfile();await loadProfiles();}catch(error){toast(error.message,'error');} }
+      async function deleteProfile(id) { if(!confirm('确认删除该审计模型？'))return;try{await api(`/api/admin/v1/audit-profiles/${id}`,{method:'DELETE'});toast('审计模型已删除');await loadProfiles();}catch(error){toast(error.message,'error');} }
+      async function dryRun(event) { event.preventDefault();$('dry-run-result').hidden=true;try{const data=await api('/api/admin/v1/audit/dry-run',{method:'POST',body:JSON.stringify({text:$('dry-run-text').value,profile_id:$('dry-run-profile').value?Number($('dry-run-profile').value):null})});const result=data.result;$('dry-run-result').className=`notice ${result.decision==='block'?'warning':''}`;$('dry-run-result').textContent=`${result.decision.toUpperCase()} · ${result.risk_code||'无风险码'} · 置信度 ${result.confidence} · ${data.latency_ms} ms · ${result.reason||''}`;$('dry-run-result').hidden=false;}catch(error){toast(error.message,'error');} }
+
+      async function loadRules() { const data=await api('/api/admin/v1/cyber-rules');state.rules=data.items||[];$('rules-table').innerHTML=state.rules.length?`<div class="table-wrap"><table><thead><tr><th>规则</th><th>匹配</th><th>动作</th><th>状态</th><th>操作</th></tr></thead><tbody>${state.rules.map(rule=>`<tr><td><strong>${escapeHTML(rule.name)}</strong><br><span class="mono">${escapeHTML(rule.code)}</span><br><span class="muted">优先级 ${rule.priority}</span></td><td>${escapeHTML(rule.pattern_type)}<br><span class="mono">${escapeHTML(String(rule.pattern).slice(0,90))}${String(rule.pattern).length>90?'…':''}</span></td><td>${badge(rule.action)}<br>${escapeHTML(rule.category)}</td><td>${badge(rule.enabled?'enabled':'disabled')}</td><td><button class="btn btn-small btn-secondary" data-rule-edit="${rule.id}">编辑</button> <button class="btn btn-small btn-danger" data-rule-delete="${rule.id}">删除</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">尚未配置规则</div>'; }
+      function resetRule() { $('rule-form').reset();$('rule-id').value='';$('rule-form-title').textContent='新增规则';$('rule-priority').value='100';$('rule-pattern-type').value='regex';$('rule-action').value='block';$('rule-enabled').checked=true; }
+      function editRule(id) { const rule=state.rules.find(item=>item.id===Number(id));if(!rule)return;$('rule-id').value=rule.id;$('rule-code').value=rule.code;$('rule-name').value=rule.name;$('rule-category').value=rule.category;$('rule-priority').value=rule.priority;$('rule-pattern-type').value=rule.pattern_type;$('rule-action').value=rule.action;$('rule-description').value=rule.description||'';$('rule-pattern').value=rule.pattern;$('rule-enabled').checked=rule.enabled;$('rule-form-title').textContent=`编辑规则 #${rule.id}`;$('rule-form').scrollIntoView({behavior:'smooth',block:'start'}); }
+      async function saveRule(event) { event.preventDefault();const payload={id:Number($('rule-id').value||0),code:$('rule-code').value,name:$('rule-name').value,description:$('rule-description').value,category:$('rule-category').value,pattern:$('rule-pattern').value,pattern_type:$('rule-pattern-type').value,action:$('rule-action').value,priority:Number($('rule-priority').value),enabled:$('rule-enabled').checked};try{await api('/api/admin/v1/cyber-rules',{method:'POST',body:JSON.stringify(payload)});toast('规则已保存并热加载');resetRule();await loadRules();}catch(error){toast(error.message,'error');} }
+      async function deleteRule(id) { if(!confirm('确认删除该规则？'))return;try{await api(`/api/admin/v1/cyber-rules/${id}`,{method:'DELETE'});toast('规则已删除');await loadRules();}catch(error){toast(error.message,'error');} }
+
+      async function loadTraces() { const parameters=new URLSearchParams();if($('trace-route').value)parameters.set('route_slug',$('trace-route').value);if($('trace-user').value)parameters.set('user_id',$('trace-user').value);if($('trace-decision').value)parameters.set('decision',$('trace-decision').value);if($('trace-risk').value)parameters.set('risk_code',$('trace-risk').value);parameters.set('limit',$('trace-limit').value||'200');const data=await api(`/api/admin/v1/traces?${parameters}`);const items=data.items||[];$('traces-table').innerHTML=items.length?`<div class="table-wrap"><table><thead><tr><th>时间 / 请求</th><th>来源</th><th>用户 / 模型</th><th>决策</th><th>状态</th><th>延迟</th></tr></thead><tbody>${items.map(item=>`<tr><td>${escapeHTML(dateText(item.created_at))}<br><span class="mono">${escapeHTML(item.request_id)}</span></td><td>${escapeHTML(item.source)}<br><span class="mono">${escapeHTML(item.route_slug||'-')}</span><br><span class="muted">${escapeHTML(item.endpoint||'-')}</span></td><td>${escapeHTML(item.external_user_id||'-')}<br>${escapeHTML(item.model||'-')}</td><td>${badge(item.decision)}<br><span class="mono">${escapeHTML(item.risk_code||'-')}</span></td><td>HTTP ${item.http_status}<br>上游 ${item.upstream_status||'-'}</td><td>${number(item.latency_ms)} ms<br><span class="muted">审计 ${number(item.audit_latency_ms)} ms</span></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">没有匹配的追踪记录</div>'; }
+
+      async function loadStorage() { const data=await api('/api/admin/v1/settings');const settings=data.settings||{};$('retention-days').value=settings.retention_days??7;$('kafka-retention-days').value=settings.kafka_retention_days??30;$('redis-stream-maxlen').value=settings.redis_stream_maxlen??100000;$('storage-status').innerHTML=`<div class="status-item"><span>PostgreSQL 窗口</span><strong>${escapeHTML(settings.retention_days??7)} 天</strong></div><div class="status-item"><span>Kafka</span><strong>${data.kafka_enabled?'启用':'未启用'}</strong></div><div class="status-item"><span>Kafka 保留</span><strong>${escapeHTML(settings.kafka_retention_days??30)} 天</strong></div><div class="status-item"><span>Redis</span><strong>${escapeHTML(data.redis?.status||'disabled')}</strong></div>`; }
+      async function saveStorage(event) { event.preventDefault();const payload={retention_days:Number($('retention-days').value),kafka_retention_days:Number($('kafka-retention-days').value),redis_stream_maxlen:Number($('redis-stream-maxlen').value)};try{const result=await api('/api/admin/v1/settings/storage',{method:'PUT',body:JSON.stringify(payload)});if(result.kafka_apply_error||result.partition_maintenance_error)toast(`已保存，但应用存在告警：${result.kafka_apply_error||result.partition_maintenance_error}`,'error');else toast('存储策略已保存并应用');await loadStorage();}catch(error){toast(error.message,'error');} }
+
+      const snippet = `# New API 追踪上报签名（Python）\nimport hashlib, hmac, json, secrets, time, requests\n\nkey_id = "newapi-prod"\nsecret = "替换为页面生成的 Secret"\nbody = json.dumps({\n  "request_id": "req-123",\n  "external_user_id": "匿名用户标识",\n  "model": "gpt-5",\n  "decision": "allow",\n  "http_status": 200,\n  "latency_ms": 832\n}, separators=(",", ":")).encode()\nts = str(int(time.time()))\nnonce = secrets.token_urlsafe(18)\ndigest = hashlib.sha256(body).hexdigest()\ncanonical = f"{ts}\\n{nonce}\\n{digest}".encode()\nsignature = hmac.new(secret.encode(), canonical, hashlib.sha256).hexdigest()\nrequests.post("https://risk.example.com/api/v1/track/events", data=body, headers={\n  "Content-Type": "application/json",\n  "X-Risk-Key-Id": key_id,\n  "X-Risk-Timestamp": ts,\n  "X-Risk-Nonce": nonce,\n  "X-Risk-Signature": signature\n}, timeout=5)`;
+      async function loadIntegration() { const data=await api('/api/admin/v1/tracking-clients');state.clients=data.items||[];$('clients-table').innerHTML=state.clients.length?`<div class="table-wrap"><table><thead><tr><th>Key ID</th><th>名称</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead><tbody>${state.clients.map(client=>`<tr><td class="mono">${escapeHTML(client.key_id)}</td><td>${escapeHTML(client.name)}</td><td>${badge(client.enabled?'enabled':'disabled')}</td><td>${escapeHTML(dateText(client.updated_at))}</td><td><button class="btn btn-small btn-secondary" data-client-edit="${client.id}">编辑</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">尚未创建追踪客户端</div>';$('integration-snippet').textContent=snippet; }
+      function editClient(id) { const client=state.clients.find(item=>item.id===Number(id));if(!client)return;$('client-key-id').value=client.key_id;$('client-name').value=client.name;$('client-secret').value='';$('client-enabled').checked=client.enabled;$('client-secret-result').hidden=true;$('client-form').scrollIntoView({behavior:'smooth'}); }
+      async function saveClient(event) { event.preventDefault();const payload={key_id:$('client-key-id').value,name:$('client-name').value,secret:$('client-secret').value,enabled:$('client-enabled').checked};try{const result=await api('/api/admin/v1/tracking-clients',{method:'POST',body:JSON.stringify(payload)});toast('追踪客户端已保存');if(result.secret){$('client-secret-value').textContent=result.secret;$('client-secret-result').hidden=false;}else{$('client-secret-result').hidden=true;}$('client-secret').value='';await loadIntegration();}catch(error){toast(error.message,'error');} }
+
+      const loaders={dashboard:loadDashboard,routes:loadRoutes,profiles:loadProfiles,rules:loadRules,traces:loadTraces,storage:loadStorage,integration:loadIntegration};
+      $('login-form').addEventListener('submit',login);$('logout-button').addEventListener('click',logout);$('refresh-button').addEventListener('click',refreshCurrent);
+      $('nav').addEventListener('click',event=>{const button=event.target.closest('button[data-view]');if(button)setView(button.dataset.view);});
+      $('new-route-button').addEventListener('click',resetRoute);$('route-reset').addEventListener('click',resetRoute);$('route-form').addEventListener('submit',saveRoute);$('routes-table').addEventListener('click',event=>{const edit=event.target.closest('[data-route-edit]');const remove=event.target.closest('[data-route-delete]');if(edit)editRoute(edit.dataset.routeEdit);if(remove)deleteRoute(remove.dataset.routeDelete);});
+      $('new-profile-button').addEventListener('click',resetProfile);$('profile-reset').addEventListener('click',resetProfile);$('profile-form').addEventListener('submit',saveProfile);$('profiles-table').addEventListener('click',event=>{const edit=event.target.closest('[data-profile-edit]');const remove=event.target.closest('[data-profile-delete]');if(edit)editProfile(edit.dataset.profileEdit);if(remove&&!remove.disabled)deleteProfile(remove.dataset.profileDelete);});$('dry-run-form').addEventListener('submit',dryRun);
+      $('new-rule-button').addEventListener('click',resetRule);$('rule-reset').addEventListener('click',resetRule);$('rule-form').addEventListener('submit',saveRule);$('rules-table').addEventListener('click',event=>{const edit=event.target.closest('[data-rule-edit]');const remove=event.target.closest('[data-rule-delete]');if(edit)editRule(edit.dataset.ruleEdit);if(remove)deleteRule(remove.dataset.ruleDelete);});
+      $('trace-filter').addEventListener('submit',event=>{event.preventDefault();loadTraces().catch(error=>toast(error.message,'error'));});$('storage-form').addEventListener('submit',saveStorage);$('client-form').addEventListener('submit',saveClient);$('clients-table').addEventListener('click',event=>{const edit=event.target.closest('[data-client-edit]');if(edit)editClient(edit.dataset.clientEdit);});
+      $('copy-snippet').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(snippet);toast('签名示例已复制');}catch{toast('浏览器拒绝复制，请手动选择','error');}});
+      resetRoute();resetProfile();resetRule();restoreSession();
+    })();
+  </script>
+</body>
+</html>
