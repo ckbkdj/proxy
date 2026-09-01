@@ -1,0 +1,923 @@
+openapi: 3.1.0
+info:
+  title: RiskGate API
+  version: 1.0.0
+  description: |
+    New API 渠道风控、统一 555 错误、请求追踪和管理控制面。
+
+    `/gateway/{slug}/...` 是透明代理入口，实际请求与响应正文由对应模型渠道协议定义。
+    非流式风控或指定渠道错误返回 HTTP 555。SSE 已提交 HTTP 200 后若渠道再报错，
+    网关会发送 `event: error` 且 JSON 中 `error.code=555`，然后关闭流。
+servers:
+  - url: https://risk.example.com
+    description: Production example
+  - url: http://127.0.0.1:8080
+    description: Local development
+
+tags:
+  - name: Runtime
+  - name: Gateway
+  - name: Trace ingestion
+  - name: Authentication
+  - name: Routes
+  - name: Audit profiles
+  - name: Cyber rules
+  - name: Traces
+  - name: Storage
+  - name: Audit dry-run
+paths:
+  /healthz:
+    get:
+      tags: [Runtime]
+      summary: Process liveness
+      operationId: health
+      responses:
+        '200':
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /readyz:
+    get:
+      tags: [Runtime]
+      summary: Dependency readiness
+      operationId: readiness
+      responses:
+        '200':
+          description: Required dependencies are ready
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, postgres, redis, kafka]
+                properties:
+                  ok: {type: boolean}
+                  postgres: {type: boolean}
+                  redis: {type: boolean}
+                  kafka: {type: boolean}
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /metrics:
+    get:
+      tags: [Runtime]
+      summary: Prometheus text metrics
+      operationId: metrics
+      responses:
+        '200':
+          description: Prometheus exposition format
+          content:
+            text/plain:
+              schema: {type: string}
+  /gateway/{slug}/{upstreamPath}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9_-]{1,62}$'
+      - name: upstreamPath
+        in: path
+        required: true
+        description: |
+          Remaining upstream path. The implementation accepts embedded `/` characters;
+          OpenAPI clients may need to construct this URL manually.
+        schema: {type: string}
+    post:
+      tags: [Gateway]
+      summary: Audited model-channel proxy
+      operationId: proxyModelRequest
+      security:
+        - gatewayBearer: []
+        - gatewayApiKey: []
+      parameters:
+        - name: X-Request-ID
+          in: header
+          required: false
+          schema: {type: string, maxLength: 256}
+        - name: X-NewAPI-Parent-Request-ID
+          in: header
+          required: false
+          schema: {type: string, maxLength: 256}
+        - name: X-NewAPI-Tenant-ID
+          in: header
+          required: false
+          schema: {type: string, maxLength: 128}
+        - name: X-NewAPI-User-ID
+          in: header
+          required: false
+          schema: {type: string, maxLength: 512}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Upstream success or SSE stream
+          headers:
+            X-Risk-Request-ID:
+              schema: {type: string}
+            X-Accel-Buffering:
+              schema: {type: string}
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+            text/event-stream:
+              schema:
+                type: string
+                description: Channel SSE, possibly terminated by a standardized code-555 error event.
+        '400':
+          description: Upstream client error not selected for normalization
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '422':
+          description: Upstream validation error not selected for normalization
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '555':
+          $ref: '#/components/responses/RiskRejected'
+    get:
+      tags: [Gateway]
+      summary: Proxy an upstream GET request
+      operationId: proxyModelGet
+      security:
+        - gatewayBearer: []
+        - gatewayApiKey: []
+      responses:
+        '200':
+          description: Upstream success
+        '555':
+          $ref: '#/components/responses/RiskRejected'
+  /api/v1/traces/ingest:
+    post:
+      tags: [Trace ingestion]
+      summary: Accept signed New API trace events
+      operationId: ingestTraces
+      description: |
+        Signature payload is `timestamp + "\n" + nonce + "\n" + hex(sha256(raw_body))`.
+        `X-Risk-Signature` is lowercase or uppercase hexadecimal HMAC-SHA256 using `TRACE_HMAC_SECRET`.
+        A request may contain one event or `{ "events": [...] }`, with at most 1000 events and 2 MiB.
+      parameters:
+        - name: X-Risk-Timestamp
+          in: header
+          required: true
+          schema: {type: integer, format: int64}
+        - name: X-Risk-Nonce
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 256}
+        - name: X-Risk-Key-ID
+          in: header
+          required: false
+          schema: {type: string, maxLength: 128, default: newapi}
+        - name: X-Risk-Signature
+          in: header
+          required: true
+          schema: {type: string, pattern: '^[0-9A-Fa-f]{64}$'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/TraceIngest'
+                - type: object
+                  required: [events]
+                  properties:
+                    events:
+                      type: array
+                      maxItems: 1000
+                      items:
+                        $ref: '#/components/schemas/TraceIngest'
+      responses:
+        '202':
+          description: Events accepted into the asynchronous trace pipeline
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted]
+                properties:
+                  accepted: {type: integer, minimum: 0, maximum: 1000}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409':
+          description: Nonce replay detected
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/APIError'}
+        '413':
+          description: Request body exceeds 2 MiB
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/APIError'}
+  /admin/api/v1/login:
+    post:
+      tags: [Authentication]
+      summary: Obtain an admin JWT
+      operationId: adminLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: {type: string}
+                password: {type: string, format: password}
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '429':
+          description: Login rate limit exceeded
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/APIError'}
+  /admin/api/v1/runtime:
+    get:
+      tags: [Runtime]
+      summary: Control-plane runtime summary
+      operationId: runtimeSummary
+      security: [{adminBearer: []}]
+      responses:
+        '200':
+          description: Runtime summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeSummary'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/api/v1/routes:
+    get:
+      tags: [Routes]
+      summary: List channel routes
+      operationId: listRoutes
+      security: [{adminBearer: []}]
+      responses:
+        '200':
+          description: Routes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/Route'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    post:
+      tags: [Routes]
+      summary: Create a route
+      operationId: createRoute
+      security: [{adminBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RouteWrite'}
+      responses:
+        '201':
+          description: Route created. `client_token` is returned once when generated or rotated.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Route'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/api/v1/routes/{id}:
+    parameters:
+      - $ref: '#/components/parameters/UUIDPath'
+    put:
+      tags: [Routes]
+      summary: Replace route configuration
+      operationId: updateRoute
+      security: [{adminBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RouteWrite'}
+      responses:
+        '200':
+          description: Route updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Route'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    delete:
+      tags: [Routes]
+      summary: Delete a route
+      operationId: deleteRoute
+      security: [{adminBearer: []}]
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /admin/api/v1/audit-profiles:
+    get:
+      tags: [Audit profiles]
+      summary: List audit model profiles
+      operationId: listAuditProfiles
+      security: [{adminBearer: []}]
+      responses:
+        '200':
+          description: Profiles
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/AuditProfile'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    post:
+      tags: [Audit profiles]
+      summary: Create an audit model profile
+      operationId: createAuditProfile
+      security: [{adminBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AuditProfileWrite'}
+      responses:
+        '201':
+          description: Profile created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuditProfile'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/api/v1/audit-profiles/{id}:
+    parameters:
+      - $ref: '#/components/parameters/UUIDPath'
+    put:
+      tags: [Audit profiles]
+      summary: Replace an audit model profile
+      operationId: updateAuditProfile
+      security: [{adminBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AuditProfileWrite'}
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuditProfile'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    delete:
+      tags: [Audit profiles]
+      summary: Delete an audit model profile
+      operationId: deleteAuditProfile
+      security: [{adminBearer: []}]
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /admin/api/v1/rules:
+    get:
+      tags: [Cyber rules]
+      summary: List deterministic Cyber rules
+      operationId: listRiskRules
+      security: [{adminBearer: []}]
+      responses:
+        '200':
+          description: Rules
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/RiskRule'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    post:
+      tags: [Cyber rules]
+      summary: Create a custom rule
+      operationId: createRiskRule
+      security: [{adminBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RiskRuleWrite'}
+      responses:
+        '201':
+          description: Rule created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RiskRule'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/api/v1/rules/{id}:
+    parameters:
+      - $ref: '#/components/parameters/UUIDPath'
+    put:
+      tags: [Cyber rules]
+      summary: Replace a rule
+      operationId: updateRiskRule
+      security: [{adminBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RiskRuleWrite'}
+      responses:
+        '200':
+          description: Rule updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RiskRule'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    delete:
+      tags: [Cyber rules]
+      summary: Delete a custom rule
+      operationId: deleteRiskRule
+      security: [{adminBearer: []}]
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/api/v1/traces:
+    get:
+      tags: [Traces]
+      summary: Query PostgreSQL hot-window traces
+      operationId: listTraces
+      security: [{adminBearer: []}]
+      parameters:
+        - {name: request_id, in: query, schema: {type: string, maxLength: 256}}
+        - {name: route, in: query, schema: {type: string, maxLength: 64}}
+        - {name: outcome, in: query, schema: {type: string, maxLength: 64}}
+        - {name: model, in: query, schema: {type: string, maxLength: 256}}
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 1000, default: 100}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+      responses:
+        '200':
+          description: Traces
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/Trace'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/api/v1/storage-policy:
+    get:
+      tags: [Storage]
+      summary: Read storage policy
+      operationId: getStoragePolicy
+      security: [{adminBearer: []}]
+      responses:
+        '200':
+          description: Storage policy
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StoragePolicy'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    put:
+      tags: [Storage]
+      summary: Replace storage policy
+      operationId: updateStoragePolicy
+      security: [{adminBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/StoragePolicy'}
+      responses:
+        '200':
+          description: Policy updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StoragePolicy'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/api/v1/audit/dry-run:
+    post:
+      tags: [Audit dry-run]
+      summary: Run rules and an optional audit profile without channel forwarding
+      operationId: auditDryRun
+      security: [{adminBearer: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                profile_id:
+                  oneOf:
+                    - {type: string, format: uuid}
+                    - {type: 'null'}
+                text: {type: string}
+                payload:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: Decision
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [decision, prompt_hash]
+                properties:
+                  decision: {$ref: '#/components/schemas/Decision'}
+                  prompt_hash: {type: string}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+components:
+  securitySchemes:
+    gatewayBearer:
+      type: http
+      scheme: bearer
+      description: Per-route RiskGate client token, not the real provider key.
+    gatewayApiKey:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: Alternative per-route RiskGate client token header.
+    adminBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    UUIDPath:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+  responses:
+    RiskRejected:
+      description: Risk control, capacity protection, or normalized upstream model error
+      headers:
+        X-Risk-Request-ID:
+          schema: {type: string}
+        X-Risk-Error-Code:
+          schema: {type: string, const: '555'}
+        X-Risk-Error-Class:
+          schema:
+            type: string
+            examples: [RISK_POLICY_BLOCKED, UPSTREAM_MODEL_ERROR, GATEWAY_RATE_LIMITED]
+        Retry-After:
+          schema: {type: string}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error555'}
+    BadRequest:
+      description: Invalid input
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/APIError'}
+    Unauthorized:
+      description: Authentication failed
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/APIError'}
+    Forbidden:
+      description: Role is not permitted
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/APIError'}
+    NotFound:
+      description: Resource not found
+    Conflict:
+      description: Resource conflict
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/APIError'}
+    ServiceUnavailable:
+      description: Required dependency unavailable
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/APIError'}
+  schemas:
+    Health:
+      type: object
+      required: [ok, service, time]
+      properties:
+        ok: {type: boolean, const: true}
+        service: {type: string, const: riskgate}
+        time: {type: string, format: date-time}
+    APIError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string}
+            message: {type: string}
+    Error555:
+      type: object
+      required: [error, request_id]
+      properties:
+        error:
+          type: object
+          required: [message, type, code]
+          properties:
+            message: {type: string, const: Request rejected by the risk-control gateway.}
+            type: {type: string, const: risk_control_error}
+            param:
+              type: ['string', 'null']
+            code: {type: integer, const: 555}
+        request_id: {type: string}
+    LoginResponse:
+      type: object
+      required: [token, expires_in, user]
+      properties:
+        token: {type: string}
+        expires_in: {type: integer}
+        user:
+          type: object
+          required: [id, username, role]
+          properties:
+            id: {type: string, format: uuid}
+            username: {type: string}
+            role: {type: string, enum: [admin, operator, auditor, viewer]}
+    RouteWrite:
+      type: object
+      required: [slug, name, upstream_base_url, upstream_kind, enabled]
+      properties:
+        slug: {type: string, pattern: '^[a-z0-9][a-z0-9_-]{1,62}$'}
+        name: {type: string, maxLength: 256}
+        upstream_base_url: {type: string, format: uri}
+        upstream_kind: {type: string, enum: [openai, anthropic, gemini, custom]}
+        upstream_api_key: {type: string, writeOnly: true}
+        client_token: {type: string, writeOnly: true, description: Omit on create to auto-generate; set on update to rotate.}
+        audit_profile_id:
+          oneOf:
+            - {type: string, format: uuid}
+            - {type: 'null'}
+        enabled: {type: boolean}
+        rate_limit_rps: {type: number, exclusiveMinimum: 0, maximum: 1000000, default: 100}
+        rate_limit_burst: {type: integer, minimum: 1, maximum: 10000000, default: 200}
+        max_inflight: {type: integer, minimum: 1, maximum: 1000000, default: 1000}
+        request_timeout_ms: {type: integer, minimum: 1000, maximum: 3600000, default: 300000}
+        allow_private_upstream: {type: boolean, default: false}
+        upstream_error_policy: {$ref: '#/components/schemas/UpstreamErrorPolicy'}
+        extra_headers:
+          type: object
+          additionalProperties: {type: string}
+          writeOnly: true
+    Route:
+      allOf:
+        - $ref: '#/components/schemas/RouteWrite'
+        - type: object
+          required: [id, newapi_base_url, has_upstream_api_key, has_client_token, created_at, updated_at]
+          properties:
+            id: {type: string, format: uuid}
+            upstream_api_key: false
+            extra_headers: false
+            newapi_base_url: {type: string, format: uri}
+            has_upstream_api_key: {type: boolean}
+            has_client_token: {type: boolean}
+            has_extra_headers: {type: boolean}
+            client_token: {type: string, writeOnly: true, description: Present only once on create or rotation.}
+            client_token_note: {type: string, const: shown_once}
+            created_at: {type: string, format: date-time}
+            updated_at: {type: string, format: date-time}
+    UpstreamErrorPolicy:
+      type: object
+      properties:
+        normalize_statuses:
+          type: array
+          maxItems: 100
+          items: {type: integer, minimum: 100, maximum: 599}
+        normalize_codes:
+          type: array
+          maxItems: 100
+          items: {type: string}
+        message_patterns:
+          type: array
+          maxItems: 50
+          items: {type: string, maxLength: 1024}
+        pass_statuses:
+          type: array
+          maxItems: 100
+          items: {type: integer, minimum: 100, maximum: 599}
+    AuditProfileWrite:
+      type: object
+      required: [name, endpoint, model, enabled, fail_mode]
+      properties:
+        name: {type: string, maxLength: 256}
+        endpoint: {type: string, format: uri}
+        model: {type: string, maxLength: 256}
+        api_key: {type: string, writeOnly: true}
+        enabled: {type: boolean}
+        fail_mode: {type: string, enum: [closed, open, shadow], default: closed}
+        block_threshold: {type: number, minimum: 0, maximum: 1, default: 0.72}
+        timeout_ms: {type: integer, minimum: 100, maximum: 120000, default: 8000}
+        max_input_chars: {type: integer, minimum: 256, maximum: 262144, default: 32000}
+        cache_ttl_seconds: {type: integer, minimum: 0, maximum: 86400, default: 600}
+        system_prompt: {type: string, maxLength: 32768}
+    AuditProfile:
+      allOf:
+        - $ref: '#/components/schemas/AuditProfileWrite'
+        - type: object
+          required: [id, created_at, updated_at]
+          properties:
+            id: {type: string, format: uuid}
+            api_key: false
+            created_at: {type: string, format: date-time}
+            updated_at: {type: string, format: date-time}
+    RiskRuleWrite:
+      type: object
+      required: [name, category, pattern, action, score, priority, enabled]
+      properties:
+        name: {type: string, maxLength: 256}
+        category: {type: string, maxLength: 128}
+        pattern: {type: string, maxLength: 4096, description: Go RE2 regular expression}
+        action: {type: string, enum: [block, review, allow]}
+        score: {type: number, minimum: 0, maximum: 1}
+        priority: {type: integer}
+        enabled: {type: boolean}
+    RiskRule:
+      allOf:
+        - $ref: '#/components/schemas/RiskRuleWrite'
+        - type: object
+          required: [id, builtin, created_at, updated_at]
+          properties:
+            id: {type: string, format: uuid}
+            builtin: {type: boolean}
+            created_at: {type: string, format: date-time}
+            updated_at: {type: string, format: date-time}
+    Decision:
+      type: object
+      required: [allowed, action, category, score, reason_code, degraded, audit_latency_ms]
+      properties:
+        allowed: {type: boolean}
+        action: {type: string, enum: [allow, review, block]}
+        category: {type: string}
+        score: {type: number, minimum: 0, maximum: 1}
+        reason_code: {type: string}
+        rule_id: {type: string, format: uuid}
+        model: {type: string}
+        labels:
+          type: array
+          items: {type: string}
+        degraded: {type: boolean}
+        audit_latency_ms: {type: integer, format: int64}
+        safe_summary: {type: string}
+    TraceIngest:
+      type: object
+      required: [external_request_id]
+      properties:
+        external_request_id: {type: string, maxLength: 256}
+        parent_request_id: {type: string, maxLength: 256}
+        route_slug: {type: string, maxLength: 64}
+        tenant_id: {type: string, maxLength: 128}
+        user_id: {type: string, writeOnly: true}
+        api_key_fingerprint: {type: string, writeOnly: true}
+        model: {type: string, maxLength: 256}
+        provider: {type: string, maxLength: 64}
+        method: {type: string, maxLength: 16}
+        path: {type: string, maxLength: 1024}
+        http_status: {type: integer}
+        outcome: {type: string, maxLength: 64}
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Sensitive prompt, credential, token, cookie and authorization keys are recursively removed.
+        occurred_at: {type: string, format: date-time}
+    Trace:
+      type: object
+      additionalProperties: false
+      properties:
+        id: {type: string, format: uuid}
+        external_request_id: {type: string}
+        parent_request_id: {type: string}
+        route_id:
+          oneOf:
+            - {type: string, format: uuid}
+            - {type: 'null'}
+        route_slug: {type: string}
+        tenant_id: {type: string}
+        user_id_hash: {type: string}
+        api_key_hash: {type: string}
+        model: {type: string}
+        provider: {type: string}
+        method: {type: string}
+        path: {type: string}
+        request_bytes: {type: integer, format: int64}
+        response_bytes: {type: integer, format: int64}
+        http_status: {type: integer}
+        normalized_code: {type: integer}
+        outcome: {type: string}
+        risk_category: {type: string}
+        risk_score: {type: number}
+        risk_reason_code: {type: string}
+        prompt_hash: {type: string}
+        audit_latency_ms: {type: integer, format: int64}
+        upstream_latency_ms: {type: integer, format: int64}
+        total_latency_ms: {type: integer, format: int64}
+        stream: {type: boolean}
+        client_ip_hash: {type: string}
+        user_agent_hash: {type: string}
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at: {type: string, format: date-time}
+    StoragePolicy:
+      type: object
+      required:
+        - retention_days
+        - postgres_enabled
+        - redis_buffer_enabled
+        - redis_buffer_ttl_hours
+        - kafka_enabled
+        - kafka_retention_hours
+        - store_raw_prompt
+      properties:
+        retention_days: {type: integer, minimum: 1, maximum: 3650, default: 7}
+        postgres_enabled: {type: boolean}
+        redis_buffer_enabled: {type: boolean}
+        redis_buffer_ttl_hours: {type: integer, minimum: 1, maximum: 8760}
+        kafka_enabled: {type: boolean}
+        kafka_retention_hours: {type: integer, minimum: 1, maximum: 87600}
+        store_raw_prompt: {type: boolean, const: false}
+        updated_at: {type: string, format: date-time, readOnly: true}
+    RuntimeSummary:
+      type: object
+      required: [stats, storage_policy, components, limits]
+      properties:
+        stats:
+          type: object
+          properties:
+            routes_enabled: {type: integer}
+            rules_enabled: {type: integer}
+            traces_last_hour: {type: integer}
+            blocked_last_hour: {type: integer}
+            outbox_pending: {type: integer}
+            outbox_dead: {type: integer}
+            default_partition_rows: {type: integer}
+        storage_policy: {$ref: '#/components/schemas/StoragePolicy'}
+        components:
+          type: object
+          properties:
+            postgres: {type: boolean}
+            redis_enabled: {type: boolean}
+            redis_healthy: {type: boolean}
+            kafka_enabled: {type: boolean}
+        limits:
+          type: object
+          properties:
+            max_request_bytes: {type: integer, format: int64}
+            max_response_bytes: {type: integer, format: int64}
+            max_sse_frame_bytes: {type: integer}
