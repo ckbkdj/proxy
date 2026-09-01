@@ -1,0 +1,32 @@
+services:
+  risk-platform:
+    environment:
+      ALLOW_PRIVATE_UPSTREAMS: "true"
+      ACK_PRIVATE_UPSTREAM_SSRF_RISK: "true"
+      AUDIT_DEFAULT_ENDPOINT: http://mock-provider:18081/audit/v1
+      AUDIT_DEFAULT_MODEL: audit-small
+      AUDIT_DEFAULT_TIMEOUT: 5s
+      AUDIT_DEFAULT_BLOCK_THRESHOLD: "0.65"
+    depends_on:
+      mock-provider:
+        condition: service_started
+
+  mock-provider:
+    build:
+      context: .
+      dockerfile: Dockerfile.mockprovider
+    image: newapi-risk-mock-provider:local
+    container_name: newapi-risk-mock-provider
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      MOCK_ADDR: :18081
+    networks:
+      - risk-backend
