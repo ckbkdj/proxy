@@ -1,0 +1,234 @@
+name: Finalize New API Risk Platform Release
+
+on:
+  push:
+    branches:
+      - feat/newapi-risk-platform-release-20260901
+    paths:
+      - .github/workflows/newapi-risk-platform-release-cleanup.yml
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/newapi-risk-platform-release-20260901
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.23.x
+      - name: Apply final idempotent corrections
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              if new in text:
+                  return
+              if old not in text:
+                  raise SystemExit(f"Expected source fragment not found in {path}: {old[:140]!r}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          ui = Path("newapi-risk-platform/internal/platform/web/index.html")
+          text = ui.read_text(encoding="utf-8")
+          for old, new in {
+              'class="app hidden"': 'class="app" hidden',
+              'class="view hidden"': 'class="view" hidden',
+              'class="danger-text hidden"': 'class="danger-text" hidden',
+              'class="notice hidden"': 'class="notice" hidden',
+              'class="secret-box hidden"': 'class="secret-box" hidden',
+              'class="toast hidden"': 'class="toast" hidden',
+          }.items():
+              text = text.replace(old, new)
+          ui.write_text(text, encoding="utf-8")
+
+          audit = Path("newapi-risk-platform/internal/platform/audit.go")
+          replace_once(
+              audit,
+              "profile, err := e.store.GetAuditProfile(ctx, route.AuditProfileID)",
+              "profile, err := e.getAuditProfile(ctx, route.AuditProfileID)",
+          )
+          text = audit.read_text(encoding="utf-8")
+          text = text.replace(
+              '"system_instruction", "query", "arguments":',
+              '"system", "system_instruction", "query", "arguments":',
+          )
+          text = text.replace(
+              "RiskCode:   strings.TrimSpace(modelResult.RiskCode),\n\t\tCategory:   strings.TrimSpace(modelResult.Category),",
+              "RiskCode:   truncateString(strings.TrimSpace(modelResult.RiskCode), 200),\n\t\tCategory:   truncateString(strings.TrimSpace(modelResult.Category), 100),",
+          )
+          audit.write_text(text, encoding="utf-8")
+
+          admin = Path("newapi-risk-platform/internal/platform/admin.go")
+          text = admin.read_text(encoding="utf-8")
+          for marker in (
+              '\ts.auditAdmin(r, "save", "audit_profile",',
+              '\ts.auditAdmin(r, "delete", "audit_profile",',
+          ):
+              replacement = '\ts.audit.InvalidateProfiles()\n' + marker
+              if replacement not in text:
+                  if marker not in text:
+                      raise SystemExit(f"Expected admin marker not found: {marker}")
+                  text = text.replace(marker, replacement, 1)
+          admin.write_text(text, encoding="utf-8")
+
+          http_file = Path("newapi-risk-platform/internal/platform/http.go")
+          text = http_file.read_text(encoding="utf-8")
+          old_metadata = 'if _, denied := blocked[lowerKey]; denied || len(key) > 100 {'
+          new_metadata = '_, denied := blocked[lowerKey]\n\t\t\t\tif denied || metadataKeyLooksSensitive(lowerKey) || len(key) > 100 {'
+          if new_metadata not in text:
+              if old_metadata not in text:
+                  raise SystemExit("Metadata filtering marker was not found")
+              text = text.replace(old_metadata, new_metadata, 1)
+          http_file.write_text(text, encoding="utf-8")
+
+          gateway = Path("newapi-risk-platform/internal/platform/gateway.go")
+          text = gateway.read_text(encoding="utf-8")
+          old_headers = 'copyRequestHeaders(request.Header, inbound.Header)\n\tfor _, key := range []string{\n\t\t"X-Risk-Gateway-Key",'
+          new_headers = 'copyRequestHeaders(request.Header, inbound.Header)\n\tinboundAuthorization := request.Header.Get("Authorization")\n\tfor _, key := range []string{\n\t\t"Authorization",\n\t\t"X-API-Key",\n\t\t"X-Goog-Api-Key",\n\t\t"Api-Key",\n\t\t"X-Risk-Gateway-Key",'
+          if new_headers not in text:
+              if old_headers not in text:
+                  raise SystemExit("Gateway credential stripping marker was not found")
+              text = text.replace(old_headers, new_headers, 1)
+          old_passthrough = 'case "passthrough":\n\t\tif inbound.Header.Get("X-Risk-Gateway-Key") == "" {\n\t\t\treturn nil, errors.New("passthrough auth requires X-Risk-Gateway-Key so Authorization is preserved")\n\t\t}'
+          new_passthrough = 'case "passthrough":\n\t\tif inbound.Header.Get("X-Risk-Gateway-Key") == "" || inboundAuthorization == "" {\n\t\t\treturn nil, errors.New("passthrough auth requires X-Risk-Gateway-Key and an Authorization header")\n\t\t}\n\t\trequest.Header.Set("Authorization", inboundAuthorization)'
+          if new_passthrough not in text:
+              if old_passthrough not in text:
+                  raise SystemExit("Gateway passthrough marker was not found")
+              text = text.replace(old_passthrough, new_passthrough, 1)
+          old_rate = 'clientIdentity := firstNonEmpty(trace.ExternalUserID, remoteIP(r))\n\trateDigest := g.security.Digest("rate-limit-key-v1", slug+"|"+clientIdentity)\n\tif !g.redis.Allow(r.Context(), rateDigest[:32], route.RateLimitRPS, route.RateLimitBurst) {'
+          new_rate = 'routeRateDigest := g.security.Digest("rate-limit-key-v1", "route|"+slug)\n\tif !g.redis.Allow(r.Context(), "route:"+routeRateDigest[:32], route.RateLimitRPS, route.RateLimitBurst) {'
+          if new_rate not in text:
+              if old_rate not in text:
+                  raise SystemExit("Gateway route rate-limit marker was not found")
+              text = text.replace(old_rate, new_rate, 1)
+          old_sse_type = 'if value, _ := payload["type"].(string); strings.EqualFold(value, "error") {\n\t\t\treturn true\n\t\t}'
+          new_sse_type = 'if value, _ := payload["type"].(string); value != "" {\n\t\t\tlowerType := strings.ToLower(value)\n\t\t\tif lowerType == "error" || strings.HasSuffix(lowerType, ".failed") || strings.HasSuffix(lowerType, "_failed") {\n\t\t\t\treturn true\n\t\t\t}\n\t\t}'
+          if new_sse_type not in text:
+              if old_sse_type not in text:
+                  raise SystemExit("SSE error marker was not found")
+              text = text.replace(old_sse_type, new_sse_type, 1)
+          old_envelope_type = 'if value, _ := payload["type"].(string); strings.EqualFold(value, "error") || strings.HasSuffix(strings.ToLower(value), "_error") {\n\t\treturn true\n\t}'
+          new_envelope_type = 'if value, _ := payload["type"].(string); value != "" {\n\t\tlowerType := strings.ToLower(value)\n\t\tif lowerType == "error" || strings.HasSuffix(lowerType, "_error") || strings.HasSuffix(lowerType, ".failed") || strings.HasSuffix(lowerType, "_failed") {\n\t\t\treturn true\n\t\t}\n\t}\n\tif status, _ := payload["status"].(string); strings.EqualFold(status, "failed") {\n\t\treturn true\n\t}'
+          if new_envelope_type not in text:
+              if old_envelope_type not in text:
+                  raise SystemExit("Buffered error-envelope marker was not found")
+              text = text.replace(old_envelope_type, new_envelope_type, 1)
+          gateway.write_text(text, encoding="utf-8")
+
+          kafka = Path("newapi-risk-platform/internal/platform/kafka.go")
+          text = kafka.read_text(encoding="utf-8")
+          old_shutdown = 'case <-ctx.Done():\n\t\t\tshutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)\n\t\t\tflush(shutdownContext)\n\t\t\tcancel()\n\t\t\treturn'
+          new_shutdown = 'case <-ctx.Done():\n\t\t\tshutdownContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)\n\t\t\tfor {\n\t\t\t\tselect {\n\t\t\t\tcase event := <-s.queue:\n\t\t\t\t\tbatch = append(batch, event)\n\t\t\t\t\tif len(batch) >= 200 {\n\t\t\t\t\t\tflush(shutdownContext)\n\t\t\t\t\t}\n\t\t\t\tdefault:\n\t\t\t\t\tflush(shutdownContext)\n\t\t\t\t\tcancel()\n\t\t\t\t\treturn\n\t\t\t\t}\n\t\t\t}'
+          if new_shutdown not in text:
+              if old_shutdown not in text:
+                  raise SystemExit("Kafka shutdown marker was not found")
+              text = text.replace(old_shutdown, new_shutdown, 1)
+          kafka.write_text(text, encoding="utf-8")
+
+          traces = Path("newapi-risk-platform/internal/platform/store_traces.go")
+          text = traces.read_text(encoding="utf-8")
+          old_lock = '\tvar locked bool\n\tif err := connection.QueryRow(ctx,\n\t\t"SELECT pg_try_advisory_lock($1)", lockID).Scan(&locked); err != nil {\n\t\treturn err\n\t}\n\tif !locked {\n\t\treturn nil\n\t}\n'
+          new_lock = '\tif _, err := connection.Exec(ctx, "SELECT pg_advisory_lock($1)", lockID); err != nil {\n\t\treturn fmt.Errorf("acquire partition-maintenance lock: %w", err)\n\t}\n'
+          if new_lock not in text:
+              if old_lock not in text:
+                  raise SystemExit("Partition lock marker was not found")
+              text = text.replace(old_lock, new_lock, 1)
+          traces.write_text(text, encoding="utf-8")
+
+          for dockerfile_name in ("Dockerfile", "Dockerfile.mockprovider"):
+              dockerfile = Path("newapi-risk-platform") / dockerfile_name
+              text = dockerfile.read_text(encoding="utf-8")
+              text = text.replace("COPY go.mod ./\n", "COPY go.mod go.sum ./\n", 1)
+              dockerfile.write_text(text, encoding="utf-8")
+
+          manifest = Path("newapi-risk-platform/deploy/kubernetes.yaml")
+          text = manifest.read_text(encoding="utf-8")
+          text = text.replace(
+              '          lifecycle:\n            preStop:\n              exec:\n                command: ["/bin/sh", "-c", "sleep 5"]\n',
+              '',
+          )
+          manifest.write_text(text, encoding="utf-8")
+
+          Path("newapi-risk-platform/deploy/kustomization.yaml").write_text(
+              "apiVersion: kustomize.config.k8s.io/v1beta1\n"
+              "kind: Kustomization\n"
+              "resources:\n"
+              "  - kubernetes.yaml\n",
+              encoding="utf-8",
+          )
+
+          readme = Path("newapi-risk-platform/README.md")
+          text = readme.read_text(encoding="utf-8")
+          text = text.replace(
+              "Kustomize 补丁会移除基础清单中依赖 shell 的 `preStop`，因为运行镜像是 distroless。生产 Ingress/LB 应在 Pod 进入 Terminating 后立即停止新流量，并保留至少 45 秒终止宽限期。",
+              "基础清单已按 distroless 非 root 镜像设计，不依赖 shell `preStop`。生产 Ingress/LB 应在 Pod 进入 Terminating 后立即停止新流量，并保留至少 45 秒终止宽限期。",
+          )
+          readme.write_text(text, encoding="utf-8")
+          PY
+          cd newapi-risk-platform
+          gofmt -w ./cmd ./internal
+          go mod tidy
+          git diff --check
+          go test -race -count=1 ./...
+          go vet ./...
+          CGO_ENABLED=0 go build -trimpath -o /tmp/riskd ./cmd/riskd
+          CGO_ENABLED=0 go build -trimpath -o /tmp/mockprovider ./cmd/mockprovider
+      - name: Run final container end-to-end test
+        env:
+          POSTGRES_PASSWORD: final-postgres-password-with-sufficient-length
+          MASTER_KEY_B64: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+          JWT_SECRET: final-jwt-secret-0123456789abcdef0123456789abcdef
+          BOOTSTRAP_ADMIN_PASSWORD: final-admin-password-with-sufficient-length
+          BOOTSTRAP_TRACKING_KEY_ID: newapi-default
+          BOOTSTRAP_TRACKING_SECRET: final-tracking-secret-with-sufficient-randomness
+          BIND_ADDRESS: 127.0.0.1
+          HTTP_PORT: "18080"
+          APP_ENV: production
+          KAFKA_ENABLED: "false"
+        run: |
+          set -euo pipefail
+          cd newapi-risk-platform
+          cleanup() {
+            docker compose -f docker-compose.yml -f docker-compose.test.yml down -v --remove-orphans || true
+          }
+          trap cleanup EXIT
+          docker compose -f docker-compose.yml -f docker-compose.test.yml up -d --build
+          for attempt in $(seq 1 90); do
+            if curl --fail --silent http://127.0.0.1:18080/readyz >/dev/null; then
+              break
+            fi
+            if [[ "${attempt}" == 90 ]]; then
+              docker compose -f docker-compose.yml -f docker-compose.test.yml logs --no-color
+              exit 1
+            fi
+            sleep 2
+          done
+          BASE_URL=http://127.0.0.1:18080 \
+          ADMIN_USERNAME=admin \
+          ADMIN_PASSWORD=final-admin-password-with-sufficient-length \
+          TRACKING_KEY_ID=newapi-default \
+          TRACKING_SECRET=final-tracking-secret-with-sufficient-randomness \
+          ROUTE_KEY=final-route-key-with-sufficient-randomness \
+          bash scripts/e2e.sh
+      - name: Remove temporary release workflows and commit final tree
+        run: |
+          set -euo pipefail
+          rm -f \
+            .github/workflows/newapi-risk-platform-normalize.yml \
+            .github/workflows/newapi-risk-platform-hardening.yml \
+            .github/workflows/newapi-risk-platform-release-cleanup.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(risk-platform): finalize validated release tree [release-normalized]"
+          git pull --rebase origin feat/newapi-risk-platform-release-20260901
+          git push origin HEAD:feat/newapi-risk-platform-release-20260901
