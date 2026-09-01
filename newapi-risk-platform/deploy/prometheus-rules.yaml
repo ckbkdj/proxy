@@ -1,0 +1,88 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: newapi-risk-platform
+  namespace: newapi-risk
+  labels:
+    app.kubernetes.io/name: newapi-risk-platform
+spec:
+  groups:
+    - name: newapi-risk-platform.availability
+      rules:
+        - alert: NewAPIRiskPlatformTargetDown
+          expr: up{job=~".*newapi-risk-platform.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: New API 风控平台实例不可抓取
+            description: Prometheus 连续 2 分钟无法抓取 {{ $labels.instance }}。
+
+        - alert: NewAPIRiskPlatformGatewayErrorRatioHigh
+          expr: |
+            sum(rate(newapi_risk_gateway_requests_total{outcome="error"}[5m]))
+            /
+            clamp_min(sum(rate(newapi_risk_gateway_requests_total[5m])), 0.001)
+            > 0.05
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: 风控网关错误率持续高于 5%
+            description: 最近 10 分钟网关错误率持续过高；检查上游渠道、审计模型、Redis 和连接超时。
+
+        - alert: NewAPIRiskPlatformRouteErrorRatioHigh
+          expr: |
+            sum by (route) (rate(newapi_risk_gateway_requests_total{outcome="error"}[5m]))
+            /
+            clamp_min(sum by (route) (rate(newapi_risk_gateway_requests_total[5m])), 0.001)
+            > 0.10
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: 单路由错误率持续高于 10%
+            description: 路由 {{ $labels.route }} 最近 10 分钟错误率持续过高。
+
+    - name: newapi-risk-platform.latency
+      rules:
+        - alert: NewAPIRiskPlatformGatewayP95LatencyHigh
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le, route) (rate(newapi_risk_gateway_duration_seconds_bucket[5m]))
+            ) > 5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: 风控网关 P95 延迟超过 5 秒
+            description: 路由 {{ $labels.route }} 的 P95 端到端延迟持续超过 5 秒。
+
+        - alert: NewAPIRiskPlatformAuditP95LatencyHigh
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le, route) (rate(newapi_risk_audit_duration_seconds_bucket[5m]))
+            ) > 2
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: 小模型审计 P95 延迟超过 2 秒
+            description: 路由 {{ $labels.route }} 的审计模型可能成为吞吐瓶颈。
+
+    - name: newapi-risk-platform.policy
+      rules:
+        - alert: NewAPIRiskPlatformBlockRateSpike
+          expr: |
+            sum by (route) (rate(newapi_risk_gateway_requests_total{outcome="block"}[10m]))
+            /
+            clamp_min(sum by (route) (rate(newapi_risk_gateway_requests_total[10m])), 0.001)
+            > 0.30
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: 风控拦截率异常升高
+            description: 路由 {{ $labels.route }} 的拦截率持续高于 30%；检查攻击流量、规则误报或模型漂移。
