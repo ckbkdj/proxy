@@ -1,0 +1,134 @@
+name: Apply New API Risk Platform Hardening
+
+on:
+  push:
+    branches:
+      - feat/newapi-risk-platform-release-20260901
+    paths:
+      - .github/workflows/newapi-risk-platform-hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/newapi-risk-platform-release-20260901
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.23.x
+      - name: Apply idempotent hardening changes
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              if new in text:
+                  return
+              if old not in text:
+                  raise SystemExit(f"Expected source fragment not found in {path}: {old[:120]!r}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          ui = Path("newapi-risk-platform/internal/platform/web/index.html")
+          text = ui.read_text(encoding="utf-8")
+          for old, new in {
+              'class="app hidden"': 'class="app" hidden',
+              'class="view hidden"': 'class="view" hidden',
+              'class="danger-text hidden"': 'class="danger-text" hidden',
+              'class="notice hidden"': 'class="notice" hidden',
+              'class="secret-box hidden"': 'class="secret-box" hidden',
+              'class="toast hidden"': 'class="toast" hidden',
+          }.items():
+              text = text.replace(old, new)
+          ui.write_text(text, encoding="utf-8")
+
+          audit = Path("newapi-risk-platform/internal/platform/audit.go")
+          replace_once(
+              audit,
+              "profile, err := e.store.GetAuditProfile(ctx, route.AuditProfileID)",
+              "profile, err := e.getAuditProfile(ctx, route.AuditProfileID)",
+          )
+          text = audit.read_text(encoding="utf-8")
+          text = text.replace(
+              '"system_instruction", "query", "arguments":',
+              '"system", "system_instruction", "query", "arguments":',
+          )
+          audit.write_text(text, encoding="utf-8")
+
+          admin = Path("newapi-risk-platform/internal/platform/admin.go")
+          text = admin.read_text(encoding="utf-8")
+          save_marker = '\ts.auditAdmin(r, "save", "audit_profile",'
+          save_replacement = '\ts.audit.InvalidateProfiles()\n' + save_marker
+          if save_replacement not in text:
+              if save_marker not in text:
+                  raise SystemExit("audit-profile save marker was not found")
+              text = text.replace(save_marker, save_replacement, 1)
+          delete_marker = '\ts.auditAdmin(r, "delete", "audit_profile",'
+          delete_replacement = '\ts.audit.InvalidateProfiles()\n' + delete_marker
+          if delete_replacement not in text:
+              if delete_marker not in text:
+                  raise SystemExit("audit-profile delete marker was not found")
+              text = text.replace(delete_marker, delete_replacement, 1)
+          admin.write_text(text, encoding="utf-8")
+
+          http_file = Path("newapi-risk-platform/internal/platform/http.go")
+          replace_once(
+              http_file,
+              'if _, denied := blocked[lowerKey]; denied || len(key) > 100 {',
+              '_, denied := blocked[lowerKey]\n\t\t\t\tif denied || metadataKeyLooksSensitive(lowerKey) || len(key) > 100 {',
+          )
+
+          gateway = Path("newapi-risk-platform/internal/platform/gateway.go")
+          replace_once(
+              gateway,
+              'copyRequestHeaders(request.Header, inbound.Header)\n\tfor _, key := range []string{\n\t\t"X-Risk-Gateway-Key",',
+              'copyRequestHeaders(request.Header, inbound.Header)\n\tinboundAuthorization := request.Header.Get("Authorization")\n\tfor _, key := range []string{\n\t\t"Authorization",\n\t\t"X-API-Key",\n\t\t"X-Goog-Api-Key",\n\t\t"Api-Key",\n\t\t"X-Risk-Gateway-Key",',
+          )
+          replace_once(
+              gateway,
+              'case "passthrough":\n\t\tif inbound.Header.Get("X-Risk-Gateway-Key") == "" {\n\t\t\treturn nil, errors.New("passthrough auth requires X-Risk-Gateway-Key so Authorization is preserved")\n\t\t}',
+              'case "passthrough":\n\t\tif inbound.Header.Get("X-Risk-Gateway-Key") == "" || inboundAuthorization == "" {\n\t\t\treturn nil, errors.New("passthrough auth requires X-Risk-Gateway-Key and an Authorization header")\n\t\t}\n\t\trequest.Header.Set("Authorization", inboundAuthorization)',
+          )
+
+          kafka = Path("newapi-risk-platform/internal/platform/kafka.go")
+          replace_once(
+              kafka,
+              'case <-ctx.Done():\n\t\t\tshutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)\n\t\t\tflush(shutdownContext)\n\t\t\tcancel()\n\t\t\treturn',
+              'case <-ctx.Done():\n\t\t\tshutdownContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)\n\t\t\tfor {\n\t\t\t\tselect {\n\t\t\t\tcase event := <-s.queue:\n\t\t\t\t\tbatch = append(batch, event)\n\t\t\t\t\tif len(batch) >= 200 {\n\t\t\t\t\t\tflush(shutdownContext)\n\t\t\t\t\t}\n\t\t\t\tdefault:\n\t\t\t\t\tflush(shutdownContext)\n\t\t\t\t\tcancel()\n\t\t\t\t\treturn\n\t\t\t\t}\n\t\t\t}',
+          )
+
+          manifest = Path("newapi-risk-platform/deploy/kubernetes.yaml")
+          text = manifest.read_text(encoding="utf-8")
+          text = text.replace(
+              '          lifecycle:\n            preStop:\n              exec:\n                command: ["/bin/sh", "-c", "sleep 5"]\n',
+              '',
+          )
+          manifest.write_text(text, encoding="utf-8")
+          PY
+          cd newapi-risk-platform
+          gofmt -w ./cmd ./internal
+          go mod tidy
+      - name: Commit hardening and module lock
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add newapi-risk-platform
+          if ! git diff --cached --quiet; then
+            git commit -m "fix(risk-platform): complete release hardening [release-normalized]"
+            git pull --rebase origin feat/newapi-risk-platform-release-20260901
+            git push origin HEAD:feat/newapi-risk-platform-release-20260901
+          fi
+      - name: Validate hardened tree
+        working-directory: newapi-risk-platform
+        run: |
+          go test -race -count=1 ./...
+          go vet ./...
+          CGO_ENABLED=0 go build -trimpath -o /tmp/riskd ./cmd/riskd
+          CGO_ENABLED=0 go build -trimpath -o /tmp/mockprovider ./cmd/mockprovider
