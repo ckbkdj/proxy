@@ -1,0 +1,154 @@
+services:
+  risk-platform:
+    build:
+      context: .
+      args:
+        VERSION: ${APP_VERSION:-local}
+        COMMIT: ${APP_COMMIT:-unknown}
+    image: newapi-risk-platform:${APP_VERSION:-local}
+    container_name: newapi-risk-platform
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${BIND_ADDRESS:-0.0.0.0}:${HTTP_PORT:-8080}:8080"
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      HTTP_ADDR: :8080
+      DATABASE_URL: postgres://risk:${POSTGRES_PASSWORD}@postgres:5432/risk?sslmode=disable
+      POSTGRES_MAX_CONNS: ${POSTGRES_MAX_CONNS:-80}
+      POSTGRES_MIN_CONNS: ${POSTGRES_MIN_CONNS:-5}
+      POSTGRES_RETENTION_DAYS: ${POSTGRES_RETENTION_DAYS:-7}
+      REDIS_URL: redis://redis:6379/0
+      REDIS_STREAM_MAXLEN: ${REDIS_STREAM_MAXLEN:-100000}
+      KAFKA_ENABLED: ${KAFKA_ENABLED:-false}
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-kafka:9092}
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-risk.request.events.v1}
+      KAFKA_CLIENT_ID: ${KAFKA_CLIENT_ID:-newapi-risk-platform}
+      KAFKA_TLS: ${KAFKA_TLS:-false}
+      KAFKA_SASL_MECHANISM: ${KAFKA_SASL_MECHANISM:-}
+      KAFKA_USERNAME: ${KAFKA_USERNAME:-}
+      KAFKA_PASSWORD: ${KAFKA_PASSWORD:-}
+      KAFKA_QUEUE_SIZE: ${KAFKA_QUEUE_SIZE:-8192}
+      MASTER_KEY_B64: ${MASTER_KEY_B64}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER:-newapi-risk-platform}
+      JWT_TTL: ${JWT_TTL:-8h}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD}
+      BOOTSTRAP_TRACKING_KEY_ID: ${BOOTSTRAP_TRACKING_KEY_ID:-newapi-default}
+      BOOTSTRAP_TRACKING_SECRET: ${BOOTSTRAP_TRACKING_SECRET:-}
+      AUDIT_DEFAULT_ENDPOINT: ${AUDIT_DEFAULT_ENDPOINT:-}
+      AUDIT_DEFAULT_MODEL: ${AUDIT_DEFAULT_MODEL:-audit-small}
+      AUDIT_DEFAULT_API_KEY: ${AUDIT_DEFAULT_API_KEY:-}
+      AUDIT_DEFAULT_TIMEOUT: ${AUDIT_DEFAULT_TIMEOUT:-8s}
+      AUDIT_DEFAULT_BLOCK_THRESHOLD: ${AUDIT_DEFAULT_BLOCK_THRESHOLD:-0.65}
+      ERROR_HTTP_STATUS: ${ERROR_HTTP_STATUS:-555}
+      REQUEST_MAX_BYTES: ${REQUEST_MAX_BYTES:-8388608}
+      RESPONSE_INSPECT_MAX_BYTES: ${RESPONSE_INSPECT_MAX_BYTES:-2097152}
+      AUDIT_TEXT_MAX_BYTES: ${AUDIT_TEXT_MAX_BYTES:-262144}
+      SSE_LINE_MAX_BYTES: ${SSE_LINE_MAX_BYTES:-1048576}
+      TRACE_QUEUE_SIZE: ${TRACE_QUEUE_SIZE:-32768}
+      TRACE_BATCH_SIZE: ${TRACE_BATCH_SIZE:-256}
+      TRACE_FLUSH_INTERVAL: ${TRACE_FLUSH_INTERVAL:-250ms}
+      GLOBAL_MAX_CONCURRENCY: ${GLOBAL_MAX_CONCURRENCY:-4096}
+      ALLOW_PRIVATE_UPSTREAMS: ${ALLOW_PRIVATE_UPSTREAMS:-false}
+      ACK_PRIVATE_UPSTREAM_SSRF_RISK: ${ACK_PRIVATE_UPSTREAM_SSRF_RISK:-false}
+      UPSTREAM_TLS_MIN_VERSION: ${UPSTREAM_TLS_MIN_VERSION:-1.2}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - risk-backend
+
+  postgres:
+    image: postgres:16.6-alpine
+    container_name: newapi-risk-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: risk
+      POSTGRES_USER: risk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    command:
+      - postgres
+      - -c
+      - max_connections=${POSTGRES_SERVER_MAX_CONNECTIONS:-300}
+      - -c
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-512MB}
+      - -c
+      - effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-1536MB}
+      - -c
+      - wal_compression=on
+    volumes:
+      - risk-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U risk -d risk"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    networks:
+      - risk-backend
+
+  redis:
+    image: redis:7.4.2-alpine
+    container_name: newapi-risk-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --maxmemory-policy
+      - noeviction
+    volumes:
+      - risk-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - risk-backend
+
+  kafka:
+    profiles: ["longterm"]
+    image: apache/kafka:3.9.0
+    container_name: newapi-risk-kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: ${KAFKA_LOG_RETENTION_HOURS:-720}
+      KAFKA_NUM_PARTITIONS: ${KAFKA_TOPIC_PARTITIONS:-12}
+    volumes:
+      - risk-kafka-data:/var/lib/kafka/data
+    networks:
+      - risk-backend
+
+networks:
+  risk-backend:
+    driver: bridge
+
+volumes:
+  risk-postgres-data:
+  risk-redis-data:
+  risk-kafka-data:
