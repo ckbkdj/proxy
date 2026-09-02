@@ -1,6 +1,7 @@
 name: Normalize New API Risk Platform Release
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - feat/newapi-risk-platform-release-20260901
@@ -11,60 +12,35 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: newapi-risk-platform-normalize-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   normalize:
-    if: ${{ !contains(github.event.head_commit.message, '[release-normalized]') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[release-normalized]') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           ref: feat/newapi-risk-platform-release-20260901
           fetch-depth: 0
+
       - uses: actions/setup-go@v5
         with:
           go-version: 1.23.x
-      - name: Normalize source and generated module lock
+          cache-dependency-path: newapi-risk-platform/go.sum
+
+      - name: Normalize and validate project
+        working-directory: newapi-risk-platform
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          ui = Path("newapi-risk-platform/internal/platform/web/index.html")
-          text = ui.read_text(encoding="utf-8")
-          replacements = {
-              'class="app hidden"': 'class="app" hidden',
-              'class="view hidden"': 'class="view" hidden',
-              'class="danger-text hidden"': 'class="danger-text" hidden',
-              'class="notice hidden"': 'class="notice" hidden',
-              'class="secret-box hidden"': 'class="secret-box" hidden',
-              'class="toast hidden"': 'class="toast" hidden',
-          }
-          for old, new in replacements.items():
-              text = text.replace(old, new)
-          ui.write_text(text, encoding="utf-8")
-
-          audit = Path("newapi-risk-platform/internal/platform/audit.go")
-          text = audit.read_text(encoding="utf-8")
-          text = text.replace(
-              '"system_instruction", "query", "arguments":',
-              '"system", "system_instruction", "query", "arguments":',
-          )
-          audit.write_text(text, encoding="utf-8")
-
-          manifest = Path("newapi-risk-platform/deploy/kubernetes.yaml")
-          text = manifest.read_text(encoding="utf-8")
-          text = text.replace(
-              '          lifecycle:\n            preStop:\n              exec:\n                command: ["/bin/sh", "-c", "sleep 5"]\n',
-              '',
-          )
-          manifest.write_text(text, encoding="utf-8")
-          PY
-          cd newapi-risk-platform
           gofmt -w ./cmd ./internal
           go mod tidy
           go test ./...
           go vet ./...
-      - name: Commit normalized files
+
+      - name: Commit normalized files when required
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
